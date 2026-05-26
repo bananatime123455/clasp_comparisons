@@ -19,17 +19,17 @@ class MRIDataset(Dataset):
         img = Image.open(self.paths[idx]).convert('L').resize(
             (self.img_width, self.img_height), Image.BILINEAR)
         arr = np.array(img, dtype=np.float32) / 127.5 - 1.0   # → [-1, 1]
-        return torch.from_numpy(arr).unsqueeze(0)              # [1, H, W]
+        return torch.from_numpy(arr).unsqueeze(0)               # [1, H, W]
 
 
-def load_datasets(data_dir_t1, data_dir_t2, img_height, img_width,
-                  batch_size, buffer_size, num_workers=4):
+def load_datasets(data_dir_mod1, data_dir_mod2, img_height, img_width,
+                  batch_size, num_workers=4):
 
-    t1_paths = sorted(pathlib.Path(data_dir_t1).glob('**/*.png'))
-    t2_paths = sorted(pathlib.Path(data_dir_t2).glob('**/*.png'))
+    mod1_paths = sorted(pathlib.Path(data_dir_mod1).glob('**/*.png'))
+    mod2_paths = sorted(pathlib.Path(data_dir_mod2).glob('**/*.png'))
 
-    t1_train, t1_test, t1_val = sort_data(t1_paths)
-    t2_train, t2_test, t2_val = sort_data(t2_paths)
+    mod1_train, mod1_test, mod1_val = sort_data(mod1_paths)
+    mod2_train, mod2_test, mod2_val = sort_data(mod2_paths)
 
     def make_loader(paths, shuffle):
         ds = MRIDataset(paths, img_height, img_width)
@@ -38,10 +38,10 @@ def load_datasets(data_dir_t1, data_dir_t2, img_height, img_width,
                           drop_last=True)
 
     return (
-        make_loader(t1_train, shuffle=True),
-        make_loader(t2_train, shuffle=True),
-        make_loader(t1_test,  shuffle=False),
-        make_loader(t2_test,  shuffle=False),
-        make_loader(t1_val,   shuffle=False),
-        make_loader(t2_val,   shuffle=False),
+        make_loader(mod1_train, shuffle=False),
+        make_loader(mod2_train, shuffle=False),
+        make_loader(mod1_test,  shuffle=False),
+        make_loader(mod2_test,  shuffle=False),
+        make_loader(mod1_val,   shuffle=False),
+        make_loader(mod2_val,   shuffle=False),
     )

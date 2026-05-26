@@ -17,7 +17,7 @@ from plot_comparison import plot_comparison_table
 class comp_pipeline:
     def __init__(self, h5_path, modality_1, modality_2,
                  data_dir_results, models_comparing, epochs,
-                 data_dir_png_t1=None, data_dir_png_t2=None,
+                 data_dir_png_t1, data_dir_png_t2,
                  img_height=256, img_width=256,
                  batch_size=16, buffer_size=1000,
                  early_stopping_patience=5, early_stopping_delta=0.01):
@@ -54,8 +54,13 @@ class comp_pipeline:
                 raise ValueError(
                     "cycle_GAN requires --data_dir_png_t1 and --data_dir_png_t2")
             cyclegan = MRIGANPipeline(
-                data_dir_t1=self.data_dir_png_t1,
-                data_dir_t2=self.data_dir_png_t2,
+                #need to change input, from mod1 mod2 to train data and test dqta,
+                # also feed it a "middle slice" for each h5 in order to ensure best representqtion of data
+                #data_dir_t1=self.data_dir_png_t1,
+                #data_dir_t2=self.data_dir_png_t2,
+
+                training_data = train,
+                testinf_data = test,
                 data_dir_results=str(self.data_dir_results / 'cycleGAN'),
                 modality_1=self.modality_1,
                 modality_2=self.modality_2,

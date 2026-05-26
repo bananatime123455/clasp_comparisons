@@ -7,13 +7,11 @@ from early_stopping import EarlyStopping
 
 
 class MRIGANPipeline:
-    def __init__(self, data_dir_t1, data_dir_t2, data_dir_results,
+    def __init__(self, training_data, testing_data,
                  modality_1, modality_2,
                  img_height, img_width, batch_size, buffer_size, epochs,
                  early_stopping_patience=5, early_stopping_delta=0.01):
 
-        self.data_dir_results = pathlib.Path(data_dir_results)
-        self.data_dir_results.mkdir(parents=True, exist_ok=True)
         self.epochs     = epochs
         self.modality_1 = modality_1
         self.modality_2 = modality_2
@@ -32,7 +30,6 @@ class MRIGANPipeline:
         (self.tr1_train, self.tr2_train,
          self.tr1_test,  self.tr2_test,
          self.tr1_val,   self.tr2_val) = load_datasets(
-            data_dir_t1, data_dir_t2,
             img_height, img_width, batch_size, buffer_size)
 
         self.early_stopping = EarlyStopping(
