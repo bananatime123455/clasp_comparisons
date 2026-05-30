@@ -179,8 +179,7 @@ class HDF5MultiDomainDataset(BaseHDF5Dataset):
             try:
                 with h5py.File(h5_path, 'r') as f:
                     # Find the full key name for each domain prefix
-                    full_keys = [next((key for key in f if key.startswith(prefix)), None) for prefix in
-                                 self.domain_key_prefixes]
+                    full_keys = [next((key for key in f if key.endswith(prefix)), None) for prefix in self.domain_key_prefixes]
 
                     # Only use this file if ALL domains are present
                     if all(full_keys):

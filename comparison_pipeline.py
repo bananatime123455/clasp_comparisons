@@ -22,7 +22,8 @@ class comp_pipeline:
                  batch_size=16, buffer_size=1000,
                  early_stopping_patience=5, early_stopping_delta=0.01):
 
-        self.h5_files         = sorted(Path(h5_path).glob("*.h5"))
+        self.h5_files = sorted(Path(h5_path).glob("**/*.h5"))        
+        print(f"h5_files found: {len(self.h5_files)}")
         self.modality_1       = modality_1
         self.modality_2       = modality_2
         self.data_dir_results = pathlib.Path(data_dir_results)
