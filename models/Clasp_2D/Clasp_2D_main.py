@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from pathlib import Path
 
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity as LPIPS
@@ -15,10 +14,26 @@ from datasets import HDF5MultiDomainDataset
 from custom_losses import CustomAggregateLoss
 from lit_model import LitVQVAE2DualDomainCrossover
 
+# Maps checkpoint domain keys -> HDF5 suffix keys
+CKPT_TO_HDF5 = {
+    'Axial_T1_post': 't1ce_transformed',
+    'Axial_T1_pre':  't1_transformed',
+    'Axial_T2':      't2_transformed',
+    'Axial_FLAIR':   'flair_transformed',
+}
 
 def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
-    DOMAIN_A_KEY = mod1
-    DOMAIN_B_KEY = mod2
+    CKPT_A_KEY = mod1  # e.g. 'Axial_T1_post' — matches checkpoint state dict
+    CKPT_B_KEY = mod2  # e.g. 'Axial_T2'
+
+    DOMAIN_A_KEY = CKPT_TO_HDF5.get(mod1)  # e.g. 't1ce_transformed' — matches HDF5
+    DOMAIN_B_KEY = CKPT_TO_HDF5.get(mod2)  # e.g. 't2_transformed'
+
+    if not DOMAIN_A_KEY or not DOMAIN_B_KEY:
+        print(f"No HDF5 key mapping for {mod1!r} or {mod2!r}. "
+              f"Valid options: {list(CKPT_TO_HDF5.keys())}")
+        return None
+
     domain_key_prefixes = [DOMAIN_A_KEY, DOMAIN_B_KEY]
 
     cfg = types.SimpleNamespace()
@@ -83,9 +98,10 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
             n_res_channel=cfg.model.num_res_channels,
             decay=cfg.model.decay_rate)
 
+    # Use checkpoint keys so state dict loads without mismatch
     domain_models = {
-        DOMAIN_A_KEY: make_vqvae(),
-        DOMAIN_B_KEY: make_vqvae(),
+        CKPT_A_KEY: make_vqvae(),
+        CKPT_B_KEY: make_vqvae(),
     }
 
     recon_loss_fn = CustomAggregateLoss(
@@ -99,18 +115,24 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     try:
+        print(f"Loading checkpoint from: {checkpoint_path}")
         lit_model = LitVQVAE2DualDomainCrossover.load_from_checkpoint(
             checkpoint_path,
+            weights_only=False,
             domain_models=domain_models,
             recon_loss_fn=recon_loss_fn,
             crossover_loss_fn=crossover_loss_fn)
     except Exception as e:
-        print((f"Failed to load checkpoint: {e}"))
+        print(f"Failed to load checkpoint: {e}")
         return None
 
     lit_model.eval()
     lit_model.freeze()
     lit_model.to(device)
+
+    # Alias checkpoint keys -> HDF5 keys for dataset batch lookups
+    lit_model.domain_models[DOMAIN_A_KEY] = lit_model.domain_models[CKPT_A_KEY]
+    lit_model.domain_models[DOMAIN_B_KEY] = lit_model.domain_models[CKPT_B_KEY]
 
     val_dataset = HDF5MultiDomainDataset(
         h5_file_list=val_files,
@@ -120,26 +142,38 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
     loader = DataLoader(val_dataset, batch_size=32, shuffle=False,
                         num_workers=12, pin_memory=True)
 
-    psnr_fn = PeakSignalNoiseRatio().to(device)
+    psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device)
     ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
     mse_fn  = MeanSquaredError().to(device)
 
     psnr_scores, ssim_scores, mse_scores = [], [], []
 
+    # --- debug batch structure ---
+    sample = next(iter(loader))
+    print(type(sample))
+    print(sample.keys())
+    for k, v in sample.items():
+        print(f"  {k}: type={type(v)}, ", end="")
+        if isinstance(v, dict):
+            print(f"dict keys={list(v.keys())}")
+        else:
+            print(f"shape={v.shape}")
+    # --- end debug ---
+    
     with torch.no_grad():
-        for batch in tqdm(loader, desc="Evaluating CLASP-2D"):
-            real_A = batch[DOMAIN_A_KEY].to(device)
-            real_B = batch[DOMAIN_B_KEY].to(device)
+            for batch in tqdm(loader, desc="Evaluating CLASP-2D"):
+                real_A = batch[DOMAIN_A_KEY]['input'].to(device)
+                real_B = batch[DOMAIN_B_KEY]['input'].to(device)
 
-            fake_B = lit_model.domain_models[DOMAIN_B_KEY].decode(
-                        *lit_model.domain_models[DOMAIN_A_KEY].encode(real_A))
+                quant_t, quant_b, _, _, _ = lit_model.domain_models[DOMAIN_A_KEY].encode(real_A)
+                fake_B = lit_model.domain_models[DOMAIN_B_KEY].decode(quant_t, quant_b)
 
-            fake_B = fake_B.clamp(0, 1)
-            real_B = real_B.clamp(0, 1)
+                fake_B = fake_B.clamp(0, 1)
+                real_B = real_B.clamp(0, 1)
 
-            psnr_scores.append(psnr_fn(fake_B, real_B).item())
-            ssim_scores.append(ssim_fn(fake_B, real_B).item())
-            mse_scores.append( mse_fn(fake_B,  real_B).item())
+                psnr_scores.append(psnr_fn(fake_B, real_B).item())
+                ssim_scores.append(ssim_fn(fake_B, real_B).item())
+                mse_scores.append( mse_fn(fake_B,  real_B).item())
 
     return {
         'model': 'Clasp_2D',

@@ -1,23 +1,17 @@
-import time
-from typing import Dict, Any
-
-# PyTorch / Lightning
+import os
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch import nn as nn
+import glob
+import torchvision
 from lightning import LightningModule
 from lightning.pytorch.loggers import MLFlowLogger
+import torch.nn.functional as F
+from termcolor import colored
+from torch import nn as nn
 from lightning.pytorch.callbacks import ModelCheckpoint
-
-# Metrics
+from typing import Dict, Any
+import time
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchmetrics import MeanSquaredError
-
-# Serialization safety for checkpoints
-import torch.serialization
-from omegaconf import DictConfig, ListConfig
-torch.serialization.add_safe_globals([DictConfig, ListConfig])
 
 
 class LitVQVAE2DualDomainCrossover(LightningModule):
@@ -99,3 +93,5 @@ class LitVQVAE2DualDomainCrossover(LightningModule):
 
         # A set to keep track of checkpoints that have already been logged to MLflow
         self.logged_checkpoints = set()
+
+ 

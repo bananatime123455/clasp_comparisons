@@ -5,10 +5,12 @@ from comparison_pipeline import comp_pipeline
 def parse_args():
     parser = argparse.ArgumentParser(description="MRI GAN Comparison Pipeline")
     parser.add_argument('--h5_path',              type=str, default="/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results/")
-    parser.add_argument('--modality_1',           type=str, default="T1_Post")
-    parser.add_argument('--modality_2',           type=str, default="T2")
+    parser.add_argument('--modality_1', type=str, default="Axial_T1_post",
+                        help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
+    parser.add_argument('--modality_2', type=str, default="Axial_T2",
+                        help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
     parser.add_argument('--data_dir_results',     type=str, default="./Results/")
-    parser.add_argument('--models_comparing',     type=str, default="Clasp_2D,cycle_GAN")
+    parser.add_argument('--models_comparing',     type=str, default="Clasp_2D") #,cycle_GAN") add back once finished debugging CLASP-2D
     parser.add_argument('--epochs',               type=int, default=100)
     # CycleGAN only
     parser.add_argument('--data_dir_png_t1',      type=str, default=None,
@@ -26,6 +28,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    print("Args parsed successfully") 
     pipeline = comp_pipeline(
         h5_path=args.h5_path,
         modality_1=args.modality_1,
@@ -42,4 +45,5 @@ if __name__ == "__main__":
         early_stopping_patience=args.early_stopping_patience,
         early_stopping_delta=args.early_stopping_delta,
     )
+    print("Starting comparison pipeline...")
     pipeline.compare()

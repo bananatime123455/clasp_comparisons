@@ -1,9 +1,9 @@
 import os
 
 MOD_MAP = {
-    'T1_Post': 't1post',
-    'T1_Pre':  't1pre',
-    'T2':      't2',
+    'Axial_T1_post': 't1post',
+    'Axial_T1_pre':  't1pre',
+    'Axial_T2':      't2',
     'FLAIR':   'flair',
 }
 

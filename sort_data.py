@@ -13,9 +13,6 @@ def sort_data(data: List[Path], seed: int = 56) -> Tuple[List, List, List]:
     train = data[:train_size]
     test  = data[train_size:train_size + test_size]
     val   = data[train_size + test_size:]
+    print(f"train: {len(train)}, test: {len(test)}, val: {len(val)}")
+    print(f"val files: {val}")
     return train, test, val
-
-def split_by_modality(training_data, testing_data):
-    training_data_copy = training_data.copy()
-    testing_data_copy = testing_data.copy()
-    
