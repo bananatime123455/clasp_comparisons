@@ -23,7 +23,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    print("Args parsed successfully") 
+    print("Args parsed successfully")
     pipeline = comp_pipeline(
         h5_path=args.h5_path,
         modality_1=args.modality_1,
@@ -31,10 +31,6 @@ if __name__ == "__main__":
         data_dir_results=args.data_dir_results,
         models_comparing=args.models_comparing.split(','),
         epochs=args.epochs,
-        data_dir_png_t1=args.data_dir_png_t1,
-        data_dir_png_t2=args.data_dir_png_t2,
-        img_height=args.img_height,
-        img_width=args.img_width,
         batch_size=args.batch_size,
         buffer_size=args.buffer_size,
         early_stopping_patience=args.early_stopping_patience,

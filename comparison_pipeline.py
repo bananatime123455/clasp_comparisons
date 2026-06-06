@@ -46,10 +46,11 @@ class comp_pipeline:
 
         if 'cycle_GAN' in self.models_comparing:
             cyclegan = MRIGANPipeline(
+                train_files=train,
+                test_files=test,
+                val_files=val,
                 modality_1=self.modality_1,
                 modality_2=self.modality_2,
-                img_height=self.img_height,
-                img_width=self.img_width,
                 batch_size=self.batch_size,
                 buffer_size=self.buffer_size,
                 epochs=self.epochs,
