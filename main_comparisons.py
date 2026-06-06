@@ -10,16 +10,11 @@ def parse_args():
     parser.add_argument('--modality_2', type=str, default="Axial_T2",
                         help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
     parser.add_argument('--data_dir_results',     type=str, default="./Results/")
-    parser.add_argument('--models_comparing',     type=str, default="Clasp_2D") #,cycle_GAN") add back once finished debugging CLASP-2D
+    parser.add_argument('--models_comparing',     type=str, default="cycle_GAN") #,cycle_GAN") add back once finished debugging CLASP-2D
+
+    #training parameters
     parser.add_argument('--epochs',               type=int, default=100)
-    # CycleGAN only
-    parser.add_argument('--data_dir_png_t1',      type=str, default=None,
-                        help="PNG directory for mod1 (required for cycle_GAN)")
-    parser.add_argument('--data_dir_png_t2',      type=str, default=None,
-                        help="PNG directory for mod2 (required for cycle_GAN)")
-    parser.add_argument('--img_height',           type=int, default=256)
-    parser.add_argument('--img_width',            type=int, default=256)
-    parser.add_argument('--batch_size',           type=int, default=16)
+    parser.add_argument('--batch_size',           type=int, default=32)
     parser.add_argument('--buffer_size',          type=int, default=1000)
     parser.add_argument('--early_stopping_patience', type=int,   default=5)
     parser.add_argument('--early_stopping_delta',    type=float, default=0.01)
