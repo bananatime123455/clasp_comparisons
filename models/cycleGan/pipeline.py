@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 
 from datasets import HDF5MultiDomainDataset
 from mri_gan import UNetGenerator, PatchDiscriminator
-from training import train_step, evaluate_test_loss, evaluate_val_metrics
+from training import train_step, run_epoch, evaluate_test_loss_h5, evaluate_val_metrics_h5
 from early_stopping import EarlyStopping
 
 # Maps modality display names → HDF5 dataset key suffixes
@@ -149,16 +149,15 @@ class MRIGANPipeline:
         Each batch entry is: { domain_key: {'input': tensor, 'output': tensor} }
         We use the 'input' tensor for both domains.
 
-        HDF5MultiDomainDataset._preprocess_slice always stacks grayscale
-        slices to 3-channel RGB (H, W) -> (H, W, 3), so ToTensor gives
-        [B, 3, H, W].  UNetGenerator and PatchDiscriminator both expect
-        1-channel input, so we average the three identical channels back
-        to [B, 1, H, W].
+        HDF5MultiDomainDataset stacks grayscale slices to 3-channel RGB,
+        so ToTensor gives [B, 3, H, W]. UNetGenerator and PatchDiscriminator
+        both expect 1-channel input, so we average the three identical
+        channels back to [B, 1, H, W].
         """
         def to_grayscale(t):
             t = t.to(self.device)
             if t.shape[1] == 3:
-                t = t.mean(dim=1, keepdim=True)   # [B,3,H,W] -> [B,1,H,W]
+                t = t.mean(dim=1, keepdim=True)   # [B,3,H,W] → [B,1,H,W]
             return t
 
         real_x = to_grayscale(batch[self.domain_a_key]['input'])
@@ -197,21 +196,23 @@ class MRIGANPipeline:
 
         for epoch in range(1, self.epochs + 1):
 
-            # ---- Training pass ----------------------------------------
-            for batch in self.train_loader:
-                real_x, real_y = self._extract_domain_pair(batch)
-                train_step(
-                    self.gen_g, self.gen_f, self.disc_x, self.disc_y,
-                    self.opt_g, self.opt_f, self.opt_dx, self.opt_dy,
-                    real_x, real_y,
-                )
+            # ---- Training pass (tqdm bar lives inside run_epoch) ------
+            run_epoch(
+                self.gen_g, self.gen_f, self.disc_x, self.disc_y,
+                self.opt_g, self.opt_f, self.opt_dx, self.opt_dy,
+                self.train_loader,
+                epoch=epoch,
+                total_epochs=self.epochs,
+                extract_fn=self._extract_domain_pair,
+            )
 
-            # ---- Early-stopping check on test set ---------------------
-            # evaluate_test_loss expects two separate loaders that yield
-            # individual domain tensors; we adapt by wrapping our joint
-            # loader into two aligned iterators via a small helper.
-            test_loss = self._evaluate_test_loss_h5()
-            improved  = early_stopping(test_loss, self._model_states())
+            # ---- Early-stopping check (tqdm bar lives inside evaluate_test_loss_h5) ----
+            test_loss = evaluate_test_loss_h5(
+                self.gen_g, self.gen_f,
+                self.test_loader,
+                self._extract_domain_pair,
+            )
+            improved = early_stopping(test_loss, self._model_states())
 
             print(
                 f"[CycleGAN] Epoch {epoch}/{self.epochs}  "
@@ -231,8 +232,13 @@ class MRIGANPipeline:
             'disc_y': self.disc_y,
         })
 
-        # ---- Final evaluation on val set -----------------------------
-        metrics = self._evaluate_val_metrics_h5()
+        # ---- Final evaluation (tqdm bar lives inside evaluate_val_metrics_h5) ----
+        metrics = evaluate_val_metrics_h5(
+            self.gen_g, self.gen_f,
+            self.val_loader,
+            self._extract_domain_pair,
+            self.device,
+        )
 
         print(
             f"[CycleGAN] Val metrics — "
@@ -248,79 +254,4 @@ class MRIGANPipeline:
             'ssim':  float(metrics['ssim']),
             'psnr':  float(metrics['psnr']),
             'mse':   float(metrics['mse']),
-        }
-
-    # ------------------------------------------------------------------
-    # H5-aware metric helpers
-    # ------------------------------------------------------------------
-
-    def _evaluate_test_loss_h5(self) -> float:
-        """
-        Cycle-consistency loss on the test set.
-        Used only as the early-stopping signal during training.
-        """
-        from loss import calc_cycle_loss
-
-        self.gen_g.eval()
-        self.gen_f.eval()
-        losses = []
-
-        with torch.no_grad():
-            for batch in self.test_loader:
-                real_x, real_y = self._extract_domain_pair(batch)
-                cycled_x = self.gen_f(self.gen_g(real_x))
-                cycled_y = self.gen_g(self.gen_f(real_y))
-                loss = (
-                    calc_cycle_loss(real_x, cycled_x) +
-                    calc_cycle_loss(real_y, cycled_y)
-                ).item()
-                losses.append(loss)
-
-        self.gen_g.train()
-        self.gen_f.train()
-        return sum(losses) / len(losses) if losses else float('inf')
-
-    def _evaluate_val_metrics_h5(self) -> dict:
-        """
-        SSIM, PSNR, MSE on the validation set.
-        Called once after training ends to produce the final reported numbers.
-        Images are normalised from [-1, 1] → [0, 1] before metric computation.
-        """
-        from torchmetrics.image import (
-            StructuralSimilarityIndexMeasure,
-            PeakSignalNoiseRatio,
-        )
-        from torchmetrics.regression import MeanSquaredError
-
-        ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
-        psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
-        mse_fn  = MeanSquaredError().to(self.device)
-
-        self.gen_g.eval()
-        self.gen_f.eval()
-        ssim_scores, psnr_scores, mse_scores = [], [], []
-
-        with torch.no_grad():
-            for batch in self.val_loader:
-                real_x, real_y = self._extract_domain_pair(batch)
-
-                # H5 slices arrive in [0, 1] (HDF5MultiDomainDataset uses
-                # min-max normalisation). UNetGenerator outputs [-1, 1]
-                # (Tanh). Rescale generator output back to [0, 1].
-                fake_y   = self.gen_g(real_x)
-                cycled_x = self.gen_f(fake_y)
-
-                # Generator input is [0, 1]; output is Tanh → [-1, 1].
-                # Rescale both cycled and original to [0, 1] for fair comparison.
-                cycled_x_01 = (cycled_x + 1.0) / 2.0
-                real_x_01   = real_x.clamp(0.0, 1.0)
-
-                ssim_scores.append(ssim_fn(cycled_x_01, real_x_01).item())
-                psnr_scores.append(psnr_fn(cycled_x_01, real_x_01).item())
-                mse_scores.append( mse_fn( cycled_x_01, real_x_01).item())
-
-        return {
-            'ssim': sum(ssim_scores) / len(ssim_scores),
-            'psnr': sum(psnr_scores) / len(psnr_scores),
-            'mse':  sum(mse_scores)  / len(mse_scores),
         }
