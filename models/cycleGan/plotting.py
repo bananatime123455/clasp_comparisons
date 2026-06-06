@@ -1,9 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
-
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 
 def generate_images(generator_g, test1, generator_f, test2, epoch, data_dir_results):
