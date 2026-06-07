@@ -36,8 +36,10 @@ class comp_pipeline:
     def compare(self):
         train, test, val = sort_data(self.h5_files)
         all_results = []
+        print(f"Models comparing: {self.models_comparing}")
 
         if 'Clasp_2D' in self.models_comparing:
+            print("Running Clasp_2D comparison...")
             checkpoint = get_checkpoint(self.modality_1, self.modality_2)
             results = Clasp_2D_model(
                 val, self.modality_1, self.modality_2, checkpoint, self.batch_size)
@@ -45,6 +47,7 @@ class comp_pipeline:
                 all_results.append(results)
 
         if 'cycle_GAN' in self.models_comparing:
+            print("Running CycleGAN comparison...")
             cyclegan = MRIGANPipeline(
                 train_files=train,
                 test_files=test,
