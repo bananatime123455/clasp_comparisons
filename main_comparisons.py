@@ -14,11 +14,11 @@ def parse_args():
                         help="Valid options: cycle_GAN, Clasp_2D") #,cycle_GAN") add back once finished debugging Clasp_2D
 
     #training parameters
-    parser.add_argument('--epochs',               type=int, default=20)
+    parser.add_argument('--epochs',               type=int, default=100)
     parser.add_argument('--batch_size',           type=int, default=8)
     parser.add_argument('--buffer_size',          type=int, default=1000)
-    parser.add_argument('--early_stopping_patience', type=int,   default=3)
-    parser.add_argument('--early_stopping_delta',    type=float, default=0.1)
+    parser.add_argument('--early_stopping_patience', type=int,   default=5)
+    parser.add_argument('--early_stopping_delta',    type=float, default=0.01)
     return parser.parse_args()
 
 
