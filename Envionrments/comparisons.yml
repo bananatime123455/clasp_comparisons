@@ -1,4 +1,4 @@
-name: merged_clasp_cyclegan
+name: comparisons
 channels:
   - conda-forge
 dependencies:
@@ -9,7 +9,7 @@ dependencies:
 
   # ── CUDA / GPU stack ────────────────────────────────────────────────────────
   # Pin major.minor only; let conda pick compatible patch builds.
-  - cuda-version=12.9
+  - cuda-version=12.8        # ← was 12.9; align with pip nvidia wheels (all 12.8.x)
   - cudnn>=9.10
 
   # ── TensorFlow ──────────────────────────────────────────────────────────────
