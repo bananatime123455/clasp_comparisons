@@ -54,7 +54,10 @@ def set_affinity(gpu_id=None):
         gpu_id = int(os.getenv('LOCAL_RANK', 0))
 
     dev = device(gpu_id)
-    os.sched_setaffinity(0, dev.getCpuAffinity())
+    try:
+        os.sched_setaffinity(0, dev.getCpuAffinity())
+    except Exception:
+        pass
 
     # list of ints
     # representing the logical cores this process is now affinitied with

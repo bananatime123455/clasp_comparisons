@@ -9,9 +9,8 @@ function output {
     exit 1
   fi
 }
-
 LOG="/tmp/unit_test.log"
-BASE_CMD="python -m torch.distributed.launch --nproc_per_node=1 train.py "
+BASE_CMD="torchrun --nproc_per_node=1 train.py"
 
 CONFIG=configs/unit_test/spade.yaml
 if test -f "$CONFIG"; then
@@ -69,13 +68,13 @@ fi
 
 CONFIG=configs/unit_test/vid2vid_street.yaml
 if test -f "$CONFIG"; then
-  cmd="python train.py --single_gpu --config $CONFIG >> ${LOG} "
+  cmd="python3 train.py --single_gpu --config $CONFIG >> ${LOG} "
   output
 fi
 
 CONFIG=configs/unit_test/vid2vid_pose.yaml
 if test -f "$CONFIG"; then
-  cmd="python train.py --single_gpu --config $CONFIG >> ${LOG} "
+  cmd="python3 train.py --single_gpu --config $CONFIG >> ${LOG} "
   output
 fi
 
@@ -111,7 +110,7 @@ fi
 
 CONFIG=configs/unit_test/gancraft.yaml
 if test -f "$CONFIG"; then
-  python scripts/download_test_data.py --model_name gancraft;
+  python3 scripts/download_test_data.py --model_name gancraft;
   cmd="${BASE_CMD} --config $CONFIG >> ${LOG} "
   output
   rm -rf projects/gancraft/test_data*

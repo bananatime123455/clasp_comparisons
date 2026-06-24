@@ -5,6 +5,6 @@ docker run \
     -it \
     -v /mnt:/mnt \
     -v ~/:/home \
-    nvcr.io/nvidian/lpr-imagine/imaginaire:${1}-py3 \
+    docker.io/tdougherty84/imaginaire:latest \
     /bin/bash
 

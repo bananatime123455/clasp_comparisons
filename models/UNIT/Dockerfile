@@ -1,4 +1,5 @@
 FROM nvcr.io/nvidia/pytorch:21.06-py3
+ENV CUDAARCHS=120
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install basics
