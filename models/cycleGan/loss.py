@@ -1,24 +1,23 @@
-import torch
-import torch.nn as nn
+import tensorflow as tf
 
 LAMBDA = 10.0
 
-adversarial_loss = nn.MSELoss()   # LSGAN — more stable than BCE for CycleGAN
+loss_obj = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
 
-def generator_loss(disc_fake):
-    return adversarial_loss(disc_fake, torch.ones_like(disc_fake))
+def generator_loss(generated):
+    return loss_obj(tf.ones_like(generated), generated)
 
 
-def discriminator_loss(disc_real, disc_fake):
-    real_loss = adversarial_loss(disc_real, torch.ones_like(disc_real))
-    fake_loss = adversarial_loss(disc_fake, torch.zeros_like(disc_fake))
-    return (real_loss + fake_loss) * 0.5
+def discriminator_loss(real, generated):
+    real_loss = loss_obj(tf.ones_like(real), real)
+    generated_loss = loss_obj(tf.zeros_like(generated), generated)
+    return (real_loss + generated_loss) * 0.5
 
 
-def calc_cycle_loss(real, cycled):
-    return LAMBDA * torch.mean(torch.abs(real - cycled))
+def calc_cycle_loss(real_image, cycled_image):
+    return LAMBDA * tf.reduce_mean(tf.abs(real_image - cycled_image))
 
 
-def identity_loss(real, same):
-    return LAMBDA * 0.5 * torch.mean(torch.abs(real - same))
+def identity_loss(real_image, same_image):
+    return LAMBDA * 0.5 * tf.reduce_mean(tf.abs(real_image - same_image))

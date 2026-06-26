@@ -22,7 +22,7 @@ CKPT_TO_HDF5 = {
     'Axial_FLAIR':   'flair_transformed',
 }
 
-def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
+def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path, batch_size):
     CKPT_A_KEY = mod1  # e.g. 'Axial_T1_post' — matches checkpoint state dict
     CKPT_B_KEY = mod2  # e.g. 'Axial_T2'
 
@@ -139,7 +139,7 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
         domain_key_prefixes=domain_key_prefixes,
         transform=None)
 
-    loader = DataLoader(val_dataset, batch_size=32, shuffle=False,
+    loader = DataLoader(val_dataset, batch_size, shuffle=False,
                         num_workers=12, pin_memory=True)
 
     psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device)
@@ -147,18 +147,6 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path):
     mse_fn  = MeanSquaredError().to(device)
 
     psnr_scores, ssim_scores, mse_scores = [], [], []
-
-    # --- debug batch structure ---
-    sample = next(iter(loader))
-    print(type(sample))
-    print(sample.keys())
-    for k, v in sample.items():
-        print(f"  {k}: type={type(v)}, ", end="")
-        if isinstance(v, dict):
-            print(f"dict keys={list(v.keys())}")
-        else:
-            print(f"shape={v.shape}")
-    # --- end debug ---
     
     with torch.no_grad():
             for batch in tqdm(loader, desc="Evaluating CLASP-2D"):

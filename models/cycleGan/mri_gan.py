@@ -1,100 +1,89 @@
-import torch
-import torch.nn as nn
+import tensorflow as tf
 
 
-class InstanceNorm(nn.Module):
-    def __init__(self, channels, epsilon=1e-5):
-        super().__init__()
-        self.scale  = nn.Parameter(torch.ones(1, channels, 1, 1))
-        self.offset = nn.Parameter(torch.zeros(1, channels, 1, 1))
+class InstanceNormalization(tf.keras.layers.Layer):
+    def __init__(self, epsilon=1e-5):
+        super(InstanceNormalization, self).__init__()
         self.epsilon = epsilon
 
-    def forward(self, x):
-        mean = x.mean(dim=[2, 3], keepdim=True)
-        var  = x.var(dim=[2, 3], keepdim=True, unbiased=False)
-        return self.scale * (x - mean) / (var + self.epsilon).sqrt() + self.offset
+    def build(self, input_shape):
+        self.scale = self.add_weight(
+            shape=input_shape[-1:], initializer='random_normal', trainable=True)
+        self.offset = self.add_weight(
+            shape=input_shape[-1:], initializer='zeros', trainable=True)
+
+    def call(self, x):
+        # Force CPU execution: the XLA/CUDA Sqrt kernel fails on some
+        # GPU+driver+TF combinations because libdevice.10.bc is missing.
+        # Pinning this lightweight arithmetic to CPU costs negligible time
+        # while the conv/deconv ops above and below still run on the GPU.
+        with tf.device("/CPU:0"):
+            mean, variance = tf.nn.moments(x, axes=[1, 2], keepdims=True)
+            result = self.scale * (x - mean) / tf.math.sqrt(variance + self.epsilon) + self.offset
+        return result
 
 
-class ResBlock(nn.Module):
-    def __init__(self, channels):
-        super().__init__()
-        self.block = nn.Sequential(
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(channels, channels, 3),
-            InstanceNorm(channels),
-            nn.ReLU(inplace=True),
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(channels, channels, 3),
-            InstanceNorm(channels),
-        )
-
-    def forward(self, x):
-        return x + self.block(x)
+def downsample(filters, size, apply_norm=True):
+    initializer = tf.random_normal_initializer(0., 0.02)
+    result = tf.keras.Sequential()
+    result.add(tf.keras.layers.Conv2D(filters, size, strides=2,
+               padding='same', kernel_initializer=initializer))
+    if apply_norm:
+        result.add(InstanceNormalization())
+    result.add(tf.keras.layers.LeakyReLU())
+    return result
 
 
-class UNetGenerator(nn.Module):
-    """U-Net style generator with skip connections."""
-    def __init__(self, in_channels=1, out_channels=1, base=64):
-        super().__init__()
-        # Encoder
-        self.enc1 = self._down(in_channels, base,     norm=False)
-        self.enc2 = self._down(base,        base * 2)
-        self.enc3 = self._down(base * 2,    base * 4)
-        # Bottleneck res blocks
-        self.res  = nn.Sequential(*[ResBlock(base * 4) for _ in range(6)])
-        # Decoder with skip connections
-        self.dec3 = self._up(base * 4,       base * 2)
-        self.dec2 = self._up(base * 2 * 2,   base)       # *2 for skip concat
-        self.dec1 = self._up(base * 2,        base)
-        self.out  = nn.Sequential(
-            nn.ReflectionPad2d(3),
-            nn.Conv2d(base, out_channels, 7),
-            nn.Tanh()
-        )
-
-    def _down(self, in_c, out_c, norm=True):
-        layers = [nn.Conv2d(in_c, out_c, 4, stride=2, padding=1)]
-        if norm:
-            layers.append(InstanceNorm(out_c))
-        layers.append(nn.LeakyReLU(0.2, inplace=True))
-        return nn.Sequential(*layers)
-
-    def _up(self, in_c, out_c):
-        return nn.Sequential(
-            nn.ConvTranspose2d(in_c, out_c, 4, stride=2, padding=1),
-            InstanceNorm(out_c),
-            nn.ReLU(inplace=True),
-        )
-
-    def forward(self, x):
-        e1 = self.enc1(x)
-        e2 = self.enc2(e1)
-        e3 = self.enc3(e2)
-        b  = self.res(e3)
-        d3 = self.dec3(b)
-        d2 = self.dec2(torch.cat([d3, e2], dim=1))
-        d1 = self.dec1(torch.cat([d2, e1], dim=1))  # note: e1 channels must match
-        return self.out(d1)
+def upsample(filters, size, apply_dropout=False):
+    initializer = tf.random_normal_initializer(0., 0.02)
+    result = tf.keras.Sequential()
+    result.add(tf.keras.layers.Conv2DTranspose(filters, size, strides=2, padding='same',
+                                               kernel_initializer=initializer))
+    result.add(InstanceNormalization())
+    if apply_dropout:
+        result.add(tf.keras.layers.Dropout(0.5))
+    result.add(tf.keras.layers.ReLU())
+    return result
 
 
-class PatchDiscriminator(nn.Module):
-    """70x70 PatchGAN discriminator."""
-    def __init__(self, in_channels=1, base=64):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Conv2d(in_channels, base,     4, stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(base,       base * 2,  4, stride=2, padding=1),
-            InstanceNorm(base * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(base * 2,   base * 4,  4, stride=2, padding=1),
-            InstanceNorm(base * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(base * 4,   base * 8,  4, stride=1, padding=1),
-            InstanceNorm(base * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(base * 8,   1,         4, stride=1, padding=1),
-        )
+def unet_generator():
+    down_stack = [downsample(64, 4, False), downsample(
+        128, 4), downsample(256, 4)]
+    up_stack = [upsample(128, 4), upsample(64, 4)]
+    initializer = tf.random_normal_initializer(0., 0.02)
+    last = tf.keras.layers.Conv2DTranspose(1, 4, strides=2, padding='same', kernel_initializer=initializer,
+                                           activation='tanh')
+    concat = tf.keras.layers.Concatenate()
+    inputs = tf.keras.layers.Input(shape=[256, 256, 1])
+    x = inputs
 
-    def forward(self, x):
-        return self.model(x)
+    skips = []
+    for down in down_stack:
+        x = down(x)
+        skips.append(x)
+    skips = reversed(skips[:-1])
+
+    for up, skip in zip(up_stack, skips):
+        x = up(x)
+        x = concat([x, skip])
+
+    x = last(x)
+    return tf.keras.Model(inputs=inputs, outputs=x)
+
+
+def discriminator():
+    initializer = tf.random_normal_initializer(0., 0.02)
+    inputs = tf.keras.layers.Input(shape=[256, 256, 1])
+    x = inputs
+    down1 = downsample(64, 4, False)(x)
+    down2 = downsample(128, 4)(down1)
+    down3 = downsample(256, 4)(down2)
+    zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3)
+    conv = tf.keras.layers.Conv2D(
+        512, 4, strides=1, kernel_initializer=initializer)(zero_pad1)
+    norm1 = InstanceNormalization()(conv)
+    leaky_relu = tf.keras.layers.LeakyReLU()(norm1)
+    zero_pad2 = tf.keras.layers.ZeroPadding2D()(leaky_relu)
+    last = tf.keras.layers.Conv2D(
+        1, 4, strides=1, kernel_initializer=initializer)(zero_pad2)
+    return tf.keras.Model(inputs=inputs, outputs=last)
