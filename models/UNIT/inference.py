@@ -28,7 +28,7 @@ def parse_args():
                         help='Dir for saving logs and models.')
     parser.add_argument('--seed', type=int, default=0,
                         help='Random seed.')
-    parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--local_rank', '--local-rank', type=int, default=0)  
     parser.add_argument('--single_gpu', action='store_true')
     parser.add_argument('--num_workers', type=int)
     parser.add_argument('--debug', action='store_true')

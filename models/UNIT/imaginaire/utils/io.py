@@ -45,17 +45,12 @@ def save_intermediate_training_results(
     torchvision.utils.save_image(image_grid, output_filename, nrow=1)
 
 
-def download_file_from_google_drive(URL, destination):
-    r"""Download a file from google drive.
-
-    Args:
-        URL: GDrive file ID.
-        destination: Path to save the file.
-
-    Returns:
-
-    """
-    download_file(f"https://docs.google.com/uc?export=download&id={URL}", destination)
+def download_file_from_google_drive(url, save_path):
+    try:
+        import gdown
+    except ImportError:
+        raise ImportError("Please install gdown: pip install gdown --break-system-packages")
+    gdown.download(id=url, output=save_path, quiet=False)
 
 
 def download_file(URL, destination):

@@ -42,8 +42,8 @@ def main():
     Usage:
     python scripts/build_lmdb.py \
       --config configs/data_image.yaml \
-      --data_root /mnt/bigdata01/datasets/test_image \
-      --output_root /mnt/bigdata01/datasets/test_image/lmdb_0/ \
+      --data_root /base_data \
+      --output_root /dataset/mri/train \
       --overwrite
     """
     args = parse_args()

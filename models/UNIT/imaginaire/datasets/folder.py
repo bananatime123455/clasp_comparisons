@@ -60,12 +60,21 @@ class FolderDataset(data.Dataset):
         with open(filepath, 'rb') as f:
             buf = f.read()
 
-        # Decode and return.
         if is_image:
             try:
-                img = cv2.imdecode(np.fromstring(buf, dtype=dtype), mode)
-            except Exception:
-                print(path)
+                img = cv2.imdecode(np.frombuffer(buf, dtype=dtype), mode)
+            except Exception as e:
+                raise RuntimeError(
+                    f"cv2.imdecode failed for path: {filepath}\n"
+                    f"  data_type={data_type}, ext={ext}\n"
+                    f"  Original error: {e}"
+                )
+            if img is None:
+                raise RuntimeError(
+                    f"cv2.imdecode returned None (file missing, corrupt, or "
+                    f"wrong extension) for path: {filepath}\n"
+                    f"  data_type={data_type}, ext={ext}"
+                )
             # BGR to RGB if 3 channels.
             if img.ndim == 3 and img.shape[-1] == 3:
                 img = img[:, :, ::-1]
@@ -75,12 +84,14 @@ class FolderDataset(data.Dataset):
             try:
                 imageio.plugins.freeimage.download()
                 img = imageio.imread(buf)
-            except Exception:
-                print(path)
-            return img  # Return a numpy array
+            except Exception as e:
+                raise RuntimeError(
+                    f"imageio.imread failed for path: {filepath}\n"
+                    f"  Original error: {e}"
+                )
+            return img
         else:
             return buf
-
     def __len__(self):
         r"""Return number of keys in Folder dataset."""
         return self.length

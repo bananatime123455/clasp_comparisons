@@ -76,14 +76,8 @@ class BaseTrainer(object):
             print("Using automatic mixed precision training.")
         self.scaler_G = GradScaler(**vars(self.cfg.trainer.amp_config))
         self.scaler_D = GradScaler(**vars(self.cfg.trainer.amp_config))
-        # In order to check whether the discriminator/generator has
-        # skipped the last parameter update due to gradient overflow.
-        self.last_step_count_G = 0
-        self.last_step_count_D = 0
-        self.skipped_G = False
-        self.skipped_D = False
 
-        # Initialize data augmentation policy.
+        # Initialize augmentation policy.
         self.aug_policy = cfg.trainer.aug_policy
         print("Augmentation policy: {}".format(self.aug_policy))
 
@@ -278,7 +272,8 @@ class BaseTrainer(object):
             return resume, current_epoch, current_iteration
         # Load checkpoint
         checkpoint = torch.load(
-            checkpoint_path, map_location=lambda storage, loc: storage)
+            checkpoint_path, map_location=lambda storage, loc: storage,
+            weights_only=False)
         current_epoch = 0
         current_iteration = 0
         if resume:
@@ -707,30 +702,27 @@ class BaseTrainer(object):
                 self.gen_grad_norm = total_norm
                 if torch.isfinite(total_norm) and \
                         total_norm > self.cfg.gen_opt.clip_grad_norm:
-                    # print(f"Gradient norm of the generator ({total_norm}) "
-                    #       f"too large.")
                     if getattr(self.cfg.gen_opt, 'skip_grad', False):
                         print(f"Skip gradient update.")
                         self.opt_G.zero_grad(set_to_none=True)
                         self.scaler_G.step(self.opt_G)
                         self.scaler_G.update()
                         break
-                    # else:
-                    #     print(f"Clip gradient norm to "
-                    #           f"{self.cfg.gen_opt.clip_grad_norm}.")
 
             # Perform an optimizer step.
             self._time_before_step()
             self.scaler_G.step(self.opt_G)
             self.scaler_G.update()
-            # Whether the step above was skipped.
-            if self.last_step_count_G == self.opt_G._step_count:
+
+            # Whether the step above was skipped (AMP overflow detection).
+            # _step_count was removed in newer PyTorch; use scaler's _found_inf instead.
+            step_skipped = bool(self.scaler_G._found_inf) if hasattr(self.scaler_G, '_found_inf') else False
+            if step_skipped:
                 print("Generator overflowed!")
                 if not torch.isfinite(total_loss):
                     print("Generator loss is not finite. Skip this iteration!")
                     update_finished = True
             else:
-                self.last_step_count_G = self.opt_G._step_count
                 update_finished = True
 
         self._extra_gen_step(data)
@@ -799,15 +791,17 @@ class BaseTrainer(object):
             self._time_before_step()
             self.scaler_D.step(self.opt_D)
             self.scaler_D.update()
-            # Whether the step above was skipped.
-            if self.last_step_count_D == self.opt_D._step_count:
+
+            # Whether the step above was skipped (AMP overflow detection).
+            # _step_count was removed in newer PyTorch; use scaler's _found_inf instead.
+            step_skipped = bool(self.scaler_D._found_inf) if hasattr(self.scaler_D, '_found_inf') else False
+            if step_skipped:
                 print("Discriminator overflowed!")
                 if not torch.isfinite(total_loss):
                     print("Discriminator loss is not finite. "
                           "Skip this iteration!")
                     update_finished = True
             else:
-                self.last_step_count_D = self.opt_D._step_count
                 update_finished = True
 
         self._extra_dis_step(data)
@@ -874,48 +868,37 @@ class BaseTrainer(object):
             self.dis_losses[loss_name] = self.dis_losses[loss_name].detach()
 
     def _time_before_forward(self):
-        r"""
-        Record time before applying forward.
-        """
+        r"""Record time before applying forward."""
         if self.cfg.speed_benchmark:
             torch.cuda.synchronize()
             self.forw_time = time.time()
 
     def _time_before_loss(self):
-        r"""
-        Record time before computing loss.
-        """
+        r"""Record time before computing loss."""
         if self.cfg.speed_benchmark:
             torch.cuda.synchronize()
             self.loss_time = time.time()
 
     def _time_before_backward(self):
-        r"""
-        Record time before applying backward.
-        """
+        r"""Record time before applying backward."""
         if self.cfg.speed_benchmark:
             torch.cuda.synchronize()
             self.back_time = time.time()
 
     def _time_before_step(self):
-        r"""
-        Record time before updating the weights
-        """
+        r"""Record time before updating the weights."""
         if self.cfg.speed_benchmark:
             torch.cuda.synchronize()
             self.step_time = time.time()
 
     def _time_before_model_avg(self):
-        r"""
-        Record time before applying model average.
-        """
+        r"""Record time before applying model average."""
         if self.cfg.speed_benchmark:
             torch.cuda.synchronize()
             self.avg_time = time.time()
 
     def _time_before_leave_gen(self):
-        r"""
-        Record forward, backward, loss, and model average time for the
+        r"""Record forward, backward, loss, and model average time for the
         generator update.
         """
         if self.cfg.speed_benchmark:
@@ -928,9 +911,7 @@ class BaseTrainer(object):
             self.accu_gen_avg_iter_time += end_time - self.avg_time
 
     def _time_before_leave_dis(self):
-        r"""
-        Record forward, backward, loss time for the discriminator update.
-        """
+        r"""Record forward, backward, loss time for the discriminator update."""
         if self.cfg.speed_benchmark:
             torch.cuda.synchronize()
             end_time = time.time()
