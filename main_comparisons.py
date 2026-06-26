@@ -10,9 +10,8 @@ def parse_args():
     parser.add_argument('--modality_2', type=str, default="Axial_T2",
                         help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
     parser.add_argument('--data_dir_results',     type=str, default="./Results/")
-    parser.add_argument('--models_comparing',     type=str, default="Clasp_2D, cycle_GAN",
-                        help="Valid options: cycle_GAN, Clasp_2D") #,cycle_GAN") add back once finished debugging Clasp_2D
-
+    parser.add_argument('--models_comparing',     type=str, default="Clasp_2D",
+                        help="Valid options: cycle_GAN, Clasp_2D, UNIT") 
     #training parameters
     parser.add_argument('--epochs',               type=int, default=10)
     parser.add_argument('--batch_size',           type=int, default=8)

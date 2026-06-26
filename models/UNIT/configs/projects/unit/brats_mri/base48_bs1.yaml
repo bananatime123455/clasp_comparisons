@@ -1,0 +1,131 @@
+# configs/projects/unit/brats_mri/base48_bs1.yaml
+#
+# UNIT config for BraTS MRI H5 training (t1ce → t2).
+# Changes from the original base48_bs1.yaml are marked with # <-- CHANGED
+
+image_display_iter: 5000
+image_save_iter: 20000
+snapshot_save_iter: 20000
+max_iter: 500000
+logging_iter: 50
+
+trainer:
+    type: imaginaire.trainers.unit
+    model_average_config:
+        enabled: True
+    gan_mode: least_square
+    perceptual_mode: vgg19
+    perceptual_layers: 'relu_4_1'
+    loss_weight:
+        gan: 1
+        image_recon: 1
+        cycle_recon: 1
+        perceptual: 0
+    init:
+        type: normal
+        gain: 0.02
+
+gen_opt:
+    type: adam
+    lr: 0.0001
+    adam_beta1: 0.
+    adam_beta2: 0.999
+    lr_policy:
+        iteration_mode: False
+        type: step
+        step_size: 100
+        gamma: 0.5
+
+dis_opt:
+    type: adam
+    lr: 0.0001
+    adam_beta1: 0.
+    adam_beta2: 0.999
+    lr_policy:
+        iteration_mode: False
+        type: step
+        step_size: 100
+        gamma: 0.5
+
+gen:
+    type: imaginaire.generators.unit
+    num_filters: 48
+    num_res_blocks: 4
+    num_downsamples_content: 2
+    content_norm_type: instance
+    decoder_norm_type: instance
+    weight_norm_type: none
+    pre_act: True
+    all_res: True
+
+dis:
+    type: imaginaire.discriminators.unit
+    num_discriminators: 3
+    kernel_size: 3
+    num_filters: 48
+    num_layers: 4
+    max_num_filters: 512
+    weight_norm_type: spectral
+
+data:
+    name: 'brats_mri_unit'
+    # <-- CHANGED: point to our custom H5 dataloader instead of unpaired_images
+    type: 'imaginaire.datasets.h5_mri'
+
+    # <-- CHANGED: H5-specific fields (read by get_h5_dataloaders.py)
+    h5_root: '/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results'
+    modality_a: 't1ce_transformed'
+    modality_b: 't2_transformed'
+    val_split: 0.1          # 10% of subjects held out for val
+
+    num_workers: 8
+
+    # input_types kept for trainer compatibility — num_channels 3 because
+    # we repeat the single MRI channel 3x for VGG perceptual loss
+    input_types:
+        - images_a:
+            ext: ~           # <-- CHANGED: no file extension (loaded from H5)
+            num_channels: 3
+            normalize: True
+        - images_b:
+            ext: ~           # <-- CHANGED
+            num_channels: 3
+            normalize: True
+
+    train:
+        roots:
+            - '/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results'
+        batch_size: 1
+        augmentations:
+            resize_smallest_side: 256   # <-- CHANGED: 256 suits MRI slice dims;
+            random_scale_limit: 0.1     #   raise to 512 if your slices are larger
+            horizontal_flip: True
+            random_crop_h_w: 256, 256   # <-- CHANGED: match resize above
+
+    val:
+        roots:
+            - '/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results'
+        batch_size: 1
+        augmentations:
+            resize_smallest_side: 256   # <-- CHANGED
+            center_crop_h_w: 256, 256   # <-- CHANGED
+
+test_data:
+    type: imaginaire.datasets.h5_mri   # <-- CHANGED
+    input_types:
+        - images_a:
+              ext: ~                   # <-- CHANGED
+              num_channels: 3
+              normalize: True
+        - images_b:
+              ext: ~                   # <-- CHANGED
+              num_channels: 3
+              normalize: True
+    paired: False
+    test:
+        is_lmdb: False
+        roots:
+            - '/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results'
+        batch_size: 1
+        augmentations:
+            resize_smallest_side: 256  # <-- CHANGED

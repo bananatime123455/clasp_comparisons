@@ -2,14 +2,18 @@ import sys
 import json
 import pathlib
 from pathlib import Path
+
 from sort_data import sort_data
 from get_Checkpoint import get_checkpoint
 
 sys.path.insert(0, './models/Clasp_2D')
-from Clasp_2D_main import Clasp_2D_model
+from Clasp_2D_pipeline import Clasp_2D_model
 
 sys.path.insert(0, './models/cycleGan')
-from pipeline import MRIGANPipeline
+from Cycle_GAN_pipeline import MRIGANPipeline
+
+sys.path.insert(0, './models/UNIT')          
+from UNIT_pipeline import UNITPipeline            
 
 from plot_comparison import plot_comparison_table
 
@@ -19,8 +23,7 @@ class comp_pipeline:
                  data_dir_results, models_comparing, epochs,
                  batch_size, buffer_size,
                  early_stopping_patience, early_stopping_delta):
-
-        self.h5_files = sorted(Path(h5_path).glob("**/*.h5"))        
+        self.h5_files = sorted(Path(h5_path).glob("**/*.h5"))
         print(f"h5_files found: {len(self.h5_files)}")
         self.modality_1       = modality_1
         self.modality_2       = modality_2
@@ -60,16 +63,34 @@ class comp_pipeline:
                 early_stopping_patience=self.es_patience,
                 early_stopping_delta=self.es_delta,
             )
-            results = cyclegan.train()  # already returns full dict
+            results = cyclegan.train()
             if results:
                 all_results.append(results)
+
+        if 'UNIT' in self.models_comparing:                 
+            print("Running UNIT comparison...")             
+            unit = UNITPipeline(                            
+                train_files=train,                          
+                test_files=test,                            
+                val_files=val,                              
+                modality_1=self.modality_1,                 
+                modality_2=self.modality_2,                 
+                batch_size=self.batch_size,                 
+                buffer_size=self.buffer_size,               
+                epochs=self.epochs,                         
+                early_stopping_patience=self.es_patience,   
+                early_stopping_delta=self.es_delta,         
+                logdir=self.data_dir_results / "unit_run",  
+            )                                               
+            results = unit.train()                          
+            if results:                                     
+                all_results.append(results)                 
 
         self._save_results(all_results)
         plot_comparison_table(
             all_results,
             self.modality_1, self.modality_2,
             self.data_dir_results)
-
         return all_results
 
     def _save_results(self, all_results):

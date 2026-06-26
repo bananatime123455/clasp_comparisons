@@ -1,0 +1,2 @@
+/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results/BraTS2021_00583/BraTS2021_00583.h5
+/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results/BraTS2021_00582/BraTS2021_00582.h5

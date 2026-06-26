@@ -86,6 +86,7 @@ def main():
     batch_size = cfg.data.train.batch_size
     total_step = max(cfg.trainer.dis_step, cfg.trainer.gen_step)
     cfg.data.train.batch_size *= total_step
+    
     train_data_loader, val_data_loader = get_train_and_val_dataloader(cfg, args.seed)
     net_G, net_D, opt_G, opt_D, sch_G, sch_D = \
         get_model_optimizer_and_scheduler(cfg, seed=args.seed)
