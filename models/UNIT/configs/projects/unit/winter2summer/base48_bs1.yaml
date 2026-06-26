@@ -91,7 +91,7 @@ data:
     train:
         # Input LMDBs.
         roots:
-            - datasets/summer2winter/train
+            - datasets/mri/train
         # Batch size per GPU.
         batch_size: 1
         # Data augmentations to be performed in given order.
@@ -108,7 +108,7 @@ data:
     val:
         # Input LMDBS.
         roots:
-            - datasets/summer2winter/train
+            - datasets/mri/train
         # Batch size per GPU.
         batch_size: 1
         # If resize_h_w is not given, then it is assumed to be same as crop_h_w.
@@ -135,7 +135,7 @@ test_data:
     test:
         is_lmdb: False
         roots:
-            - projects/unit/test_data/summer2winter_test
+            - datasets/mri/test
         # Batch size per GPU.
         batch_size: 1
         # If resize_h_w is not given, then it is assumed to be same as crop_h_w.
