@@ -42,7 +42,7 @@ class comp_pipeline:
             print("Running Clasp_2D comparison...")
             checkpoint = get_checkpoint(self.modality_1, self.modality_2)
             results = Clasp_2D_model(
-                val, self.modality_1, self.modality_2, checkpoint, self.batch_size)
+                test, self.modality_1, self.modality_2, checkpoint, self.batch_size)
             if results:
                 all_results.append(results)
 
