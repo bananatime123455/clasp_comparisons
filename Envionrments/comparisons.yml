@@ -37,7 +37,7 @@ dependencies:
 
   # ── Core scientific / numeric ───────────────────────────────────────────────
   - numpy>=2.3
-  - scipy>=1.15
+  - scipy==1.15.1
   - pandas>=3.0
   - matplotlib>=3.10
   - scikit-learn>=1.8
@@ -59,6 +59,7 @@ dependencies:
   - pyparsing
   - python-dateutil
   - fftw
+  - wandb
 
   # ── Medical imaging (from clasp_2D) ─────────────────────────────────────────
   - ants>=2.6
@@ -271,6 +272,24 @@ dependencies:
   - qhull
   - cytoolz
 
+  # ── From imaginaire (UNIT model deps) ───────────────────────────────────────
+  - ipdb
+  - jupyterlab
+  - cython
+  - scikit-video
+  - python-lmdb
+  - diskcache
+  - imutils
+  - imageio-ffmpeg
+  - qimage2ndarray
+  - albumentations
+  - pyglet
+  - boto3
+  - dlib
+  - ninja
+  - python-lmdb
+  - dlib
+
   # ── pip packages ─────────────────────────────────────────────────────────────
   - pip:
       # The +cu128 local-version tag only exists on PyTorch's own wheel index,
@@ -427,3 +446,15 @@ dependencies:
       - yarl==1.23.0
       - zope-event==5.1
       - zope-interface==7.2
+      - av
+      - nvidia-ml-py
+      - lpips
+      - face-alignment
+      - clean-fid
+      - imutils
+      - imageio-ffmpeg
+      - qimage2ndarray
+      - albumentations
+      - pyglet
+      - diskcache
+      - boto3

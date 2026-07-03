@@ -94,3 +94,34 @@ def _parse_aug(aug_cfg) -> dict:
                 pass
         out[k] = v
     return out
+
+def get_test_dataloader(cfg, test_files: list):
+    """
+    Build a DataLoader for evaluation, reusing H5MRIDataset the same way
+    get_train_and_val_dataloader does. Used by inference_h5.py to feed
+    validation H5 files through inference.py's unmodified test path.
+    """
+    modality_a = cfg.data.modality_a
+    modality_b = cfg.data.modality_b
+    num_workers = getattr(cfg.data, "num_workers", 4)
+
+    test_aug = _parse_aug(cfg.test_data.test.augmentations)
+
+    print(f"[get_h5_dataloaders] test={len(test_files)} subjects")
+
+    test_dataset = H5MRIDataset(
+        h5_files=test_files,
+        modality_a=modality_a,
+        modality_b=modality_b,
+        augmentations=test_aug,
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=getattr(cfg.test_data.test, "batch_size", 1),
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=num_workers > 0,
+    )
+    return test_loader

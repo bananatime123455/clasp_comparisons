@@ -221,7 +221,7 @@ void resample2d_kernel_forward(
     const long4 output_stride = make_long4(output.stride(0), output.stride(1), output.stride(2), output.stride(3));
 
     // TODO: when atomicAdd gets resolved, change to AT_DISPATCH_FLOATING_TYPES_AND_HALF
-//    AT_DISPATCH_FLOATING_TYPES(input1.type(), "resample_forward_kernel", ([&] {
+//    AT_DISPATCH_FLOATING_TYPES(input1.scalar_type(), "resample_forward_kernel", ([&] {
 
         kernel_resample2d_update_output<float><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::cuda::getCurrentCUDAStream() >>>(
 //at::globalContext().getCurrentCUDAStream() >>>(
@@ -269,7 +269,7 @@ void resample2d_kernel_backward(
     const long4 gradInput1_size = make_long4(gradInput1.size(0), gradInput1.size(1), gradInput1.size(2), gradInput1.size(3));
     const long4 gradInput1_stride = make_long4(gradInput1.stride(0), gradInput1.stride(1), gradInput1.stride(2), gradInput1.stride(3));
 
-//    AT_DISPATCH_FLOATING_TYPES(input1.type(), "resample_backward_input1", ([&] {
+//    AT_DISPATCH_FLOATING_TYPES(input1.scalar_type(), "resample_backward_input1", ([&] {
 
         kernel_resample2d_backward_input1<float><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::cuda::getCurrentCUDAStream() >>>(
 //at::globalContext().getCurrentCUDAStream() >>>(
@@ -297,7 +297,7 @@ void resample2d_kernel_backward(
 
     n = gradInput2.numel();
 
-//    AT_DISPATCH_FLOATING_TYPES(gradInput2.type(), "resample_backward_input2", ([&] {
+//    AT_DISPATCH_FLOATING_TYPES(gradInput2.scalar_type(), "resample_backward_input2", ([&] {
 
 
         kernel_resample2d_backward_input2<float><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::cuda::getCurrentCUDAStream() >>>(

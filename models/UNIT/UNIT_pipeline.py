@@ -1,10 +1,13 @@
+import sys
 import json
 import subprocess
 from pathlib import Path
 from typing import Optional
+from data_processing import CKPT_TO_HDF5, resolve_h5_key
 
 import h5py
 import numpy as np
+from tqdm import tqdm
 
 try:
     from skimage.metrics import (
@@ -15,31 +18,10 @@ try:
 except ImportError as e:
     raise ImportError("pip install scikit-image") from e
 
+_UNIT_DIR = Path(__file__).parent.resolve()
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-_UNIT_DIR    = Path(__file__).parent.resolve()   # /absolute/path/to/models/UNIT
-_PROJECT_DIR = _UNIT_DIR.parent.parent.resolve() # project root (comparisons/)
-DOCKER_IMAGE = "docker.io/ledoye/imaginaire:24.04-py3-zsh"
-
-# Inside the container we mount the project root to /workspace
-# so all absolute paths are rewritten with this prefix
-_CONTAINER_PROJECT = Path("/workspace")
-
-
-# ---------------------------------------------------------------------------
-# Public class
-# ---------------------------------------------------------------------------
 
 class UNITPipeline:
-    """
-    Train UNIT on MRI H5 data and return metrics in the same dict format
-    as MRIGANPipeline and Clasp_2D so comp_pipeline works unchanged.
-
-    Parameters mirror MRIGANPipeline exactly.
-    """
-
     def __init__(
         self,
         train_files: list,
@@ -48,10 +30,10 @@ class UNITPipeline:
         modality_1:  str,
         modality_2:  str,
         batch_size:  int   = 1,
-        buffer_size: int   = 0,        # unused by UNIT, kept for API compat
-        epochs:      int   = 100,
-        early_stopping_patience: int   = 10,   # unused, kept for API compat
-        early_stopping_delta:    float = 0.0,  # unused, kept for API compat
+        buffer_size: int   = 0,
+        epochs:      int   = 1,
+        early_stopping_patience: int   = 10,
+        early_stopping_delta:    float = 0.0,
         num_workers: int   = 4,
         image_size:  int   = 256,
         logdir:      str   = None,
@@ -66,29 +48,38 @@ class UNITPipeline:
         self.num_workers = num_workers
         self.image_size  = image_size
 
-        self.logdir = Path(logdir) if logdir else (
-            _UNIT_DIR.parent.parent / "logs" /
-            f"unit_{modality_1}_vs_{modality_2}"
-        )
+        self.logdir = Path(logdir).resolve() if logdir else (
+            _UNIT_DIR.parent.parent / "logs" / f"unit_{modality_1}_vs_{modality_2}"
+        ).resolve()
         self.logdir.mkdir(parents=True, exist_ok=True)
         self.config_path = self.logdir / "unit_mri.yaml"
 
-    # ------------------------------------------------------------------
-    # Main entry point — matches cyclegan.train() signature
-    # ------------------------------------------------------------------
-
     def train(self) -> dict:
-        print("[UNITPipeline] Writing config ...")
+        steps = tqdm(
+            total=4,
+            desc="[UNITPipeline] Overall progress",
+            unit="step",
+            position=0,
+            leave=True,
+        )
+
+        steps.set_description("[UNITPipeline] Writing config")
         self._write_config()
+        steps.update(1)
 
-        print("[UNITPipeline] Launching Docker training ...")
-        epochs_trained = self._run_docker_training()
+        steps.set_description("[UNITPipeline] Training")
+        epochs_trained = self._run_training()
+        steps.update(1)
 
-        print("[UNITPipeline] Running Docker inference ...")
-        self._run_docker_inference()
+        steps.set_description("[UNITPipeline] Running inference")
+        self._run_inference()
+        steps.update(1)
 
-        print("[UNITPipeline] Computing metrics ...")
+        steps.set_description("[UNITPipeline] Computing metrics")
         ssim_vals, psnr_vals, mse_vals = self._compute_metrics()
+        steps.update(1)
+        steps.set_description("[UNITPipeline] Done")
+        steps.close()
 
         results = {
             "model":          "UNIT",
@@ -102,29 +93,46 @@ class UNITPipeline:
 
         out = self.logdir / "unit_results.json"
         out.write_text(json.dumps(results, indent=2))
-        print(f"[UNITPipeline] Results saved → {out}")
+        tqdm.write(f"[UNITPipeline] Results saved → {out}")
         return results
 
     # ------------------------------------------------------------------
-    # Step 1 — write YAML config + file lists
+    # Step 1 — write YAML config + file lists (train/val/test)
     # ------------------------------------------------------------------
 
     def _write_config(self):
         sz       = self.image_size
-        max_iter = self.epochs * 1000
+        max_iter = self.epochs * 10
+        h5_key_1 = resolve_h5_key(self.modality_1)
+        h5_key_2 = resolve_h5_key(self.modality_2)
 
-        # Write file lists to disk so the Docker process can read them
         train_list = self.logdir / "train_files.txt"
         val_list   = self.logdir / "val_files.txt"
-        train_list.write_text("\n".join(str(p) for p in self.train_files))
-        val_list.write_text("\n".join(str(p) for p in self.val_files))
+        test_list  = self.logdir / "test_files.txt"
+
+        for list_path, files, label in (
+            (train_list, self.train_files, "train"),
+            (val_list,   self.val_files,   "val"),
+            (test_list,  self.test_files,  "test"),
+        ):
+            lines = [
+                str(p)
+                for p in tqdm(
+                    files,
+                    desc=f"[UNITPipeline]   writing {label} file list",
+                    unit="file",
+                    position=1,
+                    leave=False,
+                )
+            ]
+            list_path.write_text("\n".join(lines))
 
         yaml_str = f"""# Auto-generated by UNITPipeline
-image_display_iter: 2000
-image_save_iter: 5000
-snapshot_save_iter: 5000
+image_display_iter: 2
+image_save_iter: 5
+snapshot_save_iter: 5
 max_iter: {max_iter}
-logging_iter: 50
+logging_iter: 1
 
 trainer:
     type: imaginaire.trainers.unit
@@ -187,10 +195,11 @@ dis:
 data:
     name: brats_mri_unit
     type: imaginaire.datasets.h5_mri
-    modality_a: '{self.modality_1}'
-    modality_b: '{self.modality_2}'
+    modality_a: '{h5_key_1}'
+    modality_b: '{h5_key_2}'
     train_file_list: '{train_list}'
     val_file_list: '{val_list}'
+    test_file_list: '{test_list}'
     num_workers: {self.num_workers}
     input_types:
         - images_a:
@@ -229,7 +238,7 @@ test_data:
               ext: ~
               num_channels: 3
               normalize: True
-    paired: False
+    paired: True
     test:
         is_lmdb: False
         roots:
@@ -240,159 +249,86 @@ test_data:
             center_crop_h_w: {sz}, {sz}"""
 
         self.config_path.write_text(yaml_str.strip())
-        print(f"[UNITPipeline] Config → {self.config_path}")
+        tqdm.write(f"[UNITPipeline] Config → {self.config_path}")
 
     # ------------------------------------------------------------------
-    # Step 2 — train inside Docker using train_h5.py wrapper
+    # Step 2 — train locally (no Docker)
     # ------------------------------------------------------------------
 
-    def _run_docker_training(self) -> int:
-        # Rewrite host-absolute paths to their /workspace equivalents inside Docker
-        unit_dir_c = self._to_container(_UNIT_DIR)
-        config_c   = self._to_container(self.config_path)
-        logdir_c   = self._to_container(self.logdir)
-
-        train_cmd = (
-            f"cd {unit_dir_c} && "
-            f"pip install --no-cache-dir h5py && "
-            f"python -m torch.distributed.launch --nproc_per_node=1 train_h5.py "
-            f"--config {config_c} "
-            f"--logdir {logdir_c} "
-            f"--single_gpu"
-        )
-        print(f"[UNITPipeline] Inner command:\n  {train_cmd}")
-        result = subprocess.run(self._docker_cmd(train_cmd), check=False)
+    def _run_training(self) -> int:
+        train_cmd = [
+            sys.executable, "-m", "torch.distributed.run",
+            "--nproc_per_node=1",
+            "train_h5.py",
+            "--config", str(self.config_path.resolve()),
+            "--logdir", str(self.logdir.resolve()),
+            "--single_gpu",
+        ]
+        tqdm.write(f"[UNITPipeline] Inner command:\n  {' '.join(train_cmd)}")
+        # Inherit stdout/stderr so train.py's own epoch prints and any
+        # internal tqdm bars stream straight through to the terminal.
+        result = subprocess.run(train_cmd, cwd=str(_UNIT_DIR), check=False)
         if result.returncode != 0:
             raise RuntimeError(
-                f"[UNITPipeline] Training failed (exit {result.returncode}). "
-                "Check Docker output above."
+                f"[UNITPipeline] Training failed (exit {result.returncode})."
             )
         return self._parse_last_iteration()
 
     # ------------------------------------------------------------------
-    # Step 3 — inference inside Docker
+    # Step 3 — inference locally (no Docker)
     # ------------------------------------------------------------------
 
-    def _run_docker_inference(self):
+    def _run_inference(self):
         self.inference_dir = self.logdir / "inference"
         self.inference_dir.mkdir(parents=True, exist_ok=True)
 
         checkpoint = self._find_latest_checkpoint()
         if checkpoint is None:
-            print("[UNITPipeline] No checkpoint found — skipping inference.")
+            tqdm.write("[UNITPipeline] No checkpoint found — skipping inference.")
             return
 
-        unit_dir_c    = self._to_container(_UNIT_DIR)
-        config_c      = self._to_container(self.config_path)
-        checkpoint_c  = self._to_container(checkpoint)
-        infer_dir_c   = self._to_container(self.inference_dir)
+        val_list = self.logdir / "val_files.txt"
 
-        infer_cmd = (
-            f"cd {unit_dir_c} && "
-            f"python inference.py "
-            f"--config {config_c} "
-            f"--checkpoint {checkpoint_c} "
-            f"--output_dir {infer_dir_c}"
-        )
-        result = subprocess.run(self._docker_cmd(infer_cmd), check=False)
+        infer_cmd = [
+            sys.executable, "evaluate_h5.py",
+            "--config", str(self.config_path),
+            "--checkpoint", str(checkpoint),
+            "--file_list", str(val_list),
+            "--output_dir", str(self.inference_dir),
+            "--single_gpu",
+        ]
+        tqdm.write(f"[UNITPipeline] Inner command:\n  {' '.join(infer_cmd)}")
+        result = subprocess.run(infer_cmd, cwd=str(_UNIT_DIR), check=False)
         if result.returncode != 0:
-            print(f"[UNITPipeline] Inference exit {result.returncode} — "
-                  "metrics will still be computed from H5 directly.")
+            tqdm.write(f"[UNITPipeline] Inference exit {result.returncode}.")
 
     # ------------------------------------------------------------------
-    # Step 4 — compute metrics from H5 test files (pure numpy)
+    # Step 4 — compute metrics from saved inference outputs
     # ------------------------------------------------------------------
 
     def _compute_metrics(self):
-        """
-        Compare modality_1 vs modality_2 on raw H5 test data.
-        Same percentile normalization as H5MRIDataset so results are
-        directly comparable to all other models in the pipeline.
-        """
-        ssim_vals, psnr_vals, mse_vals = [], [], []
-
-        for h5_path in self.test_files:
-            with h5py.File(h5_path, "r") as f:
-                key_a = next(
-                    (k for k in f.keys() if k.endswith(self.modality_1)), None
-                )
-                key_b = next(
-                    (k for k in f.keys() if k.endswith(self.modality_2)), None
-                )
-                if key_a is None or key_b is None:
-                    print(f"  [WARN] Missing modality in {h5_path.name}, skipping")
-                    continue
-                vol_a = np.array(f[key_a], dtype=np.float32)
-                vol_b = np.array(f[key_b], dtype=np.float32)
-
-            vol_a = self._normalize(vol_a)
-            vol_b = self._normalize(vol_b)
-
-            for sa, sb in zip(vol_a, vol_b):
-                if sa.mean() < 0.05 and sb.mean() < 0.05:
-                    continue
-                ssim_vals.append(float(structural_similarity(sa, sb, data_range=1.0)))
-                psnr_vals.append(float(peak_signal_noise_ratio(sa, sb, data_range=1.0)))
-                mse_vals.append(float(mean_squared_error(sa, sb)))
-
-        if not ssim_vals:
-            print("[UNITPipeline] No slices evaluated — returning zeros.")
+        metrics_json = self.inference_dir / "metrics.json"
+        if not metrics_json.exists():
+            tqdm.write("[UNITPipeline] No metrics.json from inference — returning zeros.")
             return [0.0], [0.0], [0.0]
 
-        print(
-            f"[UNITPipeline] {len(ssim_vals)} slices — "
-            f"SSIM={np.mean(ssim_vals):.4f}  "
-            f"PSNR={np.mean(psnr_vals):.2f} dB  "
-            f"MSE={np.mean(mse_vals):.5f}"
-        )
+        d = json.loads(metrics_json.read_text())
+        ssim_vals, psnr_vals, mse_vals = d["ssim"], d["psnr"], d["mse"]
+
+        for _ in tqdm(
+            range(len(ssim_vals)),
+            desc="[UNITPipeline]   aggregating metrics",
+            unit="slice",
+            position=1,
+            leave=False,
+        ):
+            pass  # metrics already computed by evaluate_h5.py; bar shown for visibility
+
         return ssim_vals, psnr_vals, mse_vals
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    def _docker_cmd(self, inner_cmd: str) -> list:
-        return [
-            "docker", "run",
-            "--gpus", "all",
-            "--shm-size", "32g",
-            "--ipc=host",
-            "--rm",
-            # Mount project root → /workspace so all relative paths resolve
-            "-v", f"{_PROJECT_DIR}:/workspace",
-            # Keep /mnt for H5 data (already an absolute mount in the container)
-            "-v", "/mnt:/mnt",
-            DOCKER_IMAGE,
-            "/bin/bash", "-c", inner_cmd,
-        ]
-
-    def _to_container(self, host_path: Path) -> Path:
-        """
-        Rewrite a host absolute path to its equivalent inside the container.
-        Paths under _PROJECT_DIR  → /workspace/...
-        Paths under /mnt          → /mnt/... (unchanged, direct mount)
-        """
-        host_path = Path(host_path).resolve()
-        try:
-            rel = host_path.relative_to(_PROJECT_DIR)
-            return _CONTAINER_PROJECT / rel
-        except ValueError:
-            pass
-        # Already under /mnt — pass through unchanged
-        if str(host_path).startswith("/mnt"):
-            return host_path
-        raise ValueError(
-            f"[UNITPipeline] Path {host_path} is outside both "
-            f"{_PROJECT_DIR} and /mnt — add a Docker volume mount for it."
-        )
-
-    @staticmethod
-    def _normalize(arr: np.ndarray) -> np.ndarray:
-        lo  = np.percentile(arr, 1)
-        hi  = np.percentile(arr, 99)
-        arr = np.clip(arr, lo, hi).astype(np.float32)
-        rng = hi - lo
-        return (arr - lo) / rng if rng > 1e-8 else np.zeros_like(arr)
 
     def _find_latest_checkpoint(self) -> Optional[Path]:
         ckpts = sorted(self.logdir.glob("*.pt"))
