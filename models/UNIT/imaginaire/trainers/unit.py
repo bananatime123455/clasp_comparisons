@@ -27,11 +27,41 @@ class Trainer(BaseTrainer):
     """
 
     def __init__(self, cfg, net_G, net_D, opt_G, opt_D, sch_G, sch_D,
-                 train_data_loader, val_data_loader):
+                train_data_loader, val_data_loader):
         super().__init__(cfg, net_G, net_D, opt_G, opt_D, sch_G, sch_D,
-                         train_data_loader, val_data_loader)
+                        train_data_loader, val_data_loader)
         self.best_fid_a = None
         self.best_fid_b = None
+
+        mod1_full = getattr(cfg.data, 'modality_a_display', cfg.data.modality_a)
+        mod2_full = getattr(cfg.data, 'modality_b_display', cfg.data.modality_b)
+        mod1 = self._abbreviate_modality(mod1_full)
+        mod2 = self._abbreviate_modality(mod2_full)
+
+        self.vis_labels = [
+            f"Real {mod1}",
+            f"Real {mod2}",
+            f"{mod1} recon",
+            f"{mod2} recon",
+            f"{mod1}->{mod2}",
+            f"{mod2}->{mod1}",
+            f"{mod1}->{mod2}->{mod1}",
+            f"{mod2}->{mod1}->{mod2}",
+        ]
+
+    @staticmethod
+    def _abbreviate_modality(name):
+        r"""Shorten a modality display name (e.g. 'Axial_T1_post') to a
+        compact label (e.g. 'T1post') for use in image visualization labels.
+
+        Strategy: strip a leading orientation/prefix token like 'Axial' if
+        present, then join the remaining underscore-separated parts.
+        """
+        parts = name.split('_')
+        drop_prefixes = {'axial', 'sagittal', 'coronal'}
+        if len(parts) > 1 and parts[0].lower() in drop_prefixes:
+            parts = parts[1:]
+        return ''.join(parts)
 
     def _init_loss(self, cfg):
         r"""Initialize loss terms. In UNIT, we have several loss terms

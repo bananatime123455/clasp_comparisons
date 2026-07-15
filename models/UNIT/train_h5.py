@@ -1,28 +1,12 @@
-# models/UNIT/train_h5.py
-#
-# Thin wrapper around imaginaire's train.py that replaces
-# get_train_and_val_dataloader with our H5 numpy version.
-#
-# Called by pipeline.py inside Docker — accepts identical CLI args to train.py
-# so no changes to the Docker command are needed beyond swapping the script name.
-#
-# The patch works by importing get_h5_dataloaders before imaginaire.utils.trainer
-# touches the dataloader, then monkey-patching the symbol in imaginaire's
-# utils.dataset module so every subsequent import resolves to our version.
-
 import sys
 import os
 
-# ---------------------------------------------------------------------------
-# 1. Ensure models/UNIT is on the path so our local modules are found first
-# ---------------------------------------------------------------------------
+#ensure local imports found first
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-# ---------------------------------------------------------------------------
-# 2. Patch imaginaire's dataloader BEFORE train.py imports it
-# ---------------------------------------------------------------------------
+#ensure h5 data is loaded instead of LMDB/folder data
 import imaginaire.utils.dataset as _iu_dataset
 from get_h5_dataloaders import get_train_and_val_dataloader as _h5_loader
 from imaginaire.config import Config as _Config
@@ -44,16 +28,11 @@ def _patched_loader(cfg, seed=0):
     return _h5_loader(cfg, train_files=train_files, val_files=val_files)
 
 
-# Monkey-patch so any code doing
-#   from imaginaire.utils.dataset import get_train_and_val_dataloader
-# after this point gets our version.
+#set it so that imaginaire's train.py will use our H5 dataloader instead of the default LMDB/folder loader
 _iu_dataset.get_train_and_val_dataloader = _patched_loader
 
-# ---------------------------------------------------------------------------
-# 3. Now run train.py's main() — it will pick up the patched loader
-# ---------------------------------------------------------------------------
-# We exec train.py rather than importing it so __name__ == '__main__' works
-# and argparse reads sys.argv correctly.
+
+#start training by executing imaginaire's train.py, but with our patched dataloader
 train_py = os.path.join(_HERE, "train.py")
 with open(train_py) as f:
     _code = f.read()
