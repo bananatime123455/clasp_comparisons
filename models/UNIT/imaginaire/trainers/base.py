@@ -5,6 +5,7 @@
 import json
 import os
 import time
+import sys
 
 import torch
 import torchvision
@@ -36,6 +37,12 @@ class BaseTrainer(object):
         train_data_loader (obj): Train data loader.
         val_data_loader (obj): Validation data loader.
     """
+    _LABEL_FONT_CANDIDATES = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        os.path.join(sys.prefix, "fonts", "DejaVuSans-Bold.ttf"),
+    ]
 
     def __init__(self,
                  cfg,
@@ -524,7 +531,6 @@ class BaseTrainer(object):
 
     def save_image(self, path, data):
         r"""Compute visualization images and save them to the disk.
-
         Args:
             path (str): Location of the file.
             data (dict): Data used for the current iteration.
@@ -542,8 +548,142 @@ class BaseTrainer(object):
                 vis_images, nrow=1, padding=0, normalize=False)
             if self.cfg.trainer.image_to_tensorboard:
                 self.image_meter.write_image(image_grid, self.current_iteration)
-            torchvision.utils.save_image(image_grid, path, nrow=1)
+
+            # Optionally draw per-panel labels (e.g. modality names) before saving.
+            labels = getattr(self, 'vis_labels', None)
+            if labels:
+                self._save_labeled_image(image_grid, labels, path)
+            else:
+                torchvision.utils.save_image(image_grid, path, nrow=1)
+
             wandb.log({os.path.splitext(os.path.basename(path))[0]: [wandb.Image(path)]})
+
+    def _save_labeled_image(self, image_grid, labels, path):
+        r"""Draw a text label above each panel in a horizontally-concatenated
+        image strip, then save to disk. Labels are wrapped and, if necessary,
+        shrunk so they always fit entirely within their panel's width.
+
+        Args:
+            image_grid (Tensor): (C, H, W) image, panels laid out side-by-side
+                along the width dimension in the same left-to-right order as
+                `labels`.
+            labels (list[str]): One label per panel, same order as the
+                underlying visualization list.
+            path (str): Output file path.
+        """
+        from PIL import Image, ImageDraw, ImageFont
+
+        pil_image = torchvision.transforms.functional.to_pil_image(image_grid.cpu())
+        n = len(labels)
+        panel_width = pil_image.width // n
+        max_text_width = panel_width - 10  # leave a small margin on each side
+
+        draw = ImageDraw.Draw(pil_image)
+        base_font_size = max(9, pil_image.height // 70)
+
+        for i, label in enumerate(labels):
+            x0 = i * panel_width + 5
+            y = 5
+
+            font, lines = self._fit_label(draw, label, max_text_width, base_font_size)
+
+            # Draw a background box sized to the full wrapped block.
+            line_bboxes = [draw.textbbox((x0, y), line, font=font) for line in lines]
+            block_left = min(b[0] for b in line_bboxes)
+            block_top = min(b[1] for b in line_bboxes)
+            block_right = max(b[2] for b in line_bboxes)
+            block_bottom = max(b[3] for b in line_bboxes)
+            draw.rectangle(
+                [block_left - 1, block_top - 1, block_right + 1, block_bottom + 1],
+                fill=(0, 0, 0),
+            )
+
+            cur_y = y
+            for line in lines:
+                draw.text((x0, cur_y), line, fill=(255, 255, 255), font=font)
+                line_height = draw.textbbox((x0, cur_y), line, font=font)[3] - \
+                    draw.textbbox((x0, cur_y), line, font=font)[1]
+                cur_y += line_height + 2
+
+        pil_image.save(path)
+
+    def _fit_label(self, draw, label, max_width, base_font_size):
+        r"""Find a font size and line-wrapping for `label` such that every
+        line fits within `max_width`. Tries wrapping first at decreasing font
+        sizes; if even a single word overflows at the smallest attempted size,
+        falls back to character-level wrapping so nothing gets clipped.
+
+        Returns:
+            (ImageFont, list[str]): the chosen font and wrapped lines.
+        """
+        from PIL import ImageFont
+
+        for font_size in range(base_font_size, 5, -1):
+            font = self._load_ttf_font(font_size)
+            lines = self._wrap_by_words(draw, label, font, max_width)
+            if lines is not None:
+                return font, lines
+
+        # Last resort: smallest font, hard character wrap (always fits).
+        font = self._load_ttf_font(6)
+        lines = self._wrap_by_chars(draw, label, font, max_width)
+        return font, lines
+
+    def _wrap_by_words(self, draw, label, font, max_width):
+        r"""Word-wrap `label` to fit `max_width`. Returns None if any single
+        word alone is too wide for max_width at this font size (caller should
+        try a smaller font instead).
+        """
+        words = label.split(" ")
+        lines, current = [], ""
+        for word in words:
+            candidate = (current + " " + word).strip()
+            width = draw.textbbox((0, 0), candidate, font=font)[2]
+            if width <= max_width:
+                current = candidate
+            else:
+                if not current:
+                    # Single word already too wide at this font size.
+                    return None
+                lines.append(current)
+                current = word
+                word_width = draw.textbbox((0, 0), word, font=font)[2]
+                if word_width > max_width:
+                    return None
+        if current:
+            lines.append(current)
+        return lines
+
+    def _wrap_by_chars(self, draw, label, font, max_width):
+        r"""Hard character-level wrap, guaranteed to fit max_width regardless
+        of word lengths. Used only as a last-resort fallback.
+        """
+        lines, current = [], ""
+        for ch in label:
+            candidate = current + ch
+            width = draw.textbbox((0, 0), candidate, font=font)[2]
+            if width <= max_width or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = ch
+        if current:
+            lines.append(current)
+        return lines
+
+    def _load_ttf_font(self, font_size):
+        r"""Load a TrueType font at the given size, falling back to PIL's
+        bitmap default font if no TrueType font file is found on this system.
+        """
+        from PIL import ImageFont
+
+        for font_path in self._LABEL_FONT_CANDIDATES:
+            if os.path.exists(font_path):
+                try:
+                    return ImageFont.truetype(font_path, font_size)
+                except OSError:
+                    continue
+        return ImageFont.load_default()
 
     def write_metrics(self):
         r"""Write metrics to the tensorboard."""

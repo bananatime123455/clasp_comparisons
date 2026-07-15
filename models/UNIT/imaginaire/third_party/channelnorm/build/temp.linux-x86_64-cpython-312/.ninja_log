@@ -1,0 +1,3 @@
+# ninja log v7
+0	13819	1783042207777357915	/home/theperfectbanana/Yu/comparisons/models/UNIT/imaginaire/third_party/channelnorm/build/temp.linux-x86_64-cpython-312/src/channelnorm_cuda.o	291345234fd78af4
+0	21027	1783042207777357915	/home/theperfectbanana/Yu/comparisons/models/UNIT/imaginaire/third_party/channelnorm/build/temp.linux-x86_64-cpython-312/src/channelnorm_kernel.o	173b7d024fa76266

@@ -78,3 +78,4 @@ models/UNIT/logs/2026_0625_1846_28_funit/tensorboard/events.out.tfevents.1782431
 models/UNIT/logs/2026_0625_1846_39_coco_funit/wandb_id.txt
 models/UNIT/logs/2026_0625_1846_39_coco_funit/tensorboard/events.out.tfevents.1782431199.EM.2761.0
 models/UNIT/logs/2026_0625_1846_48_vid2vid_street/tensorboard/events.out.tfevents.1782431208.EM.2843.0
+Results/unit_run/*checkpoint.pt
