@@ -36,6 +36,8 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path, batch_size):
 
     domain_key_prefixes = [DOMAIN_A_KEY, DOMAIN_B_KEY]
 
+    #Load pseudo hydra config 
+
     cfg = types.SimpleNamespace()
     cfg.model = types.SimpleNamespace()
     cfg.model.top_codebook_embedding_dim     = 128
@@ -48,61 +50,117 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path, batch_size):
     cfg.model.num_res_blocks                 = 2
     cfg.model.num_res_channels               = 32
 
-    shared_quantize_t = Quantize(
-        dim=cfg.model.top_codebook_embedding_dim,
-        n_embed=cfg.model.top_codebook_num_embeddings,
-        decay=cfg.model.decay_rate)
+    ############################################################################
+    # Instantiate the Model
+    ############################################################################
 
-    shared_quantize_b = Quantize(
-        dim=cfg.model.bottom_codebook_embedding_dim,
-        n_embed=cfg.model.bottom_codebook_num_embeddings,
-        decay=cfg.model.decay_rate)
+    # ---------------------------------------------------------------------------
+    # VQVAE2 Crossover Model (Dual Domain with Crossover)
 
-    def make_encoder(stride):
-        return Encoder(
-            in_channel=cfg.model.input_channels if stride == 4 else cfg.model.base_channels,
-            channel=cfg.model.base_channels,
-            n_res_block=cfg.model.num_res_blocks,
-            n_res_channel=cfg.model.num_res_channels,
-            stride=stride)
+    # --- 1. Instantiate the SHARED Codebooks ---
+    # These are instantiated ONLY ONCE.
+    # They will be passed as objects to both model_A and model_B.
+    shared_quantize_t = Quantize(dim=cfg.model.top_codebook_embedding_dim,
+                                n_embed=cfg.model.top_codebook_num_embeddings,
+                                decay=cfg.model.decay_rate)
 
-    def make_dec_t():
-        return Decoder(
-            in_channel=cfg.model.top_codebook_embedding_dim,
-            out_channel=cfg.model.top_codebook_embedding_dim,
-            channel=cfg.model.base_channels,
-            n_res_block=cfg.model.num_res_blocks,
-            n_res_channel=cfg.model.num_res_channels,
-            stride=2)
+    shared_quantize_b = Quantize(dim=cfg.model.bottom_codebook_embedding_dim,
+                                n_embed=cfg.model.bottom_codebook_num_embeddings,
+                                decay=cfg.model.decay_rate)
 
-    def make_dec():
-        return Decoder(
-            in_channel=cfg.model.top_codebook_embedding_dim + cfg.model.bottom_codebook_embedding_dim,
-            out_channel=cfg.model.input_channels,
-            channel=cfg.model.base_channels,
-            n_res_block=cfg.model.num_res_blocks,
-            n_res_channel=cfg.model.num_res_channels,
-            stride=4)
+    # --- 2. Instantiate Encoders and Decoders for Domain A ---
+    # These are specific to Domain A
+    enc_b_A = Encoder(in_channel=cfg.model.input_channels,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=4)
 
-    def make_vqvae():
-        return VQVAE2_Crossover(
-            enc_t=make_encoder(stride=2),
-            enc_b=make_encoder(stride=4),
-            dec_t=make_dec_t(),
-            dec=make_dec(),
-            quantize_t=shared_quantize_t,
-            quantize_b=shared_quantize_b,
-            in_channel=cfg.model.input_channels,
-            channel=cfg.model.base_channels,
-            n_res_block=cfg.model.num_res_blocks,
-            n_res_channel=cfg.model.num_res_channels,
-            decay=cfg.model.decay_rate)
+    enc_t_A = Encoder(in_channel=cfg.model.base_channels,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=2)
 
-    # Use checkpoint keys so state dict loads without mismatch
+    dec_t_A = Decoder(in_channel=cfg.model.top_codebook_embedding_dim,
+                    out_channel=cfg.model.top_codebook_embedding_dim,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=2)
+
+    dec_A = Decoder(in_channel=cfg.model.top_codebook_embedding_dim + cfg.model.bottom_codebook_embedding_dim,
+                    out_channel=cfg.model.input_channels,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=4)
+
+    # --- 3. Instantiate Encoders and Decoders for Domain B ---
+    # These are specific to Domain B's
+    enc_b_B = Encoder(in_channel=cfg.model.input_channels,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=4)
+
+    enc_t_B = Encoder(in_channel=cfg.model.base_channels,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=2)
+
+    dec_t_B = Decoder(in_channel=cfg.model.top_codebook_embedding_dim,
+                    out_channel=cfg.model.top_codebook_embedding_dim,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=2)
+
+    dec_B = Decoder(in_channel=cfg.model.top_codebook_embedding_dim + cfg.model.bottom_codebook_embedding_dim,
+                    out_channel=cfg.model.input_channels,
+                    channel=cfg.model.base_channels,
+                    n_res_block=cfg.model.num_res_blocks,
+                    n_res_channel=cfg.model.num_res_channels,
+                    stride=4)
+
+    # --- 4. Instantiate the TWO VQVAE2_Crossover models, passing all required parameters ---
+    # Model for Domain A
+    model_A = VQVAE2_Crossover(
+        enc_t=enc_t_A,
+        enc_b=enc_b_A,
+        dec_t=dec_t_A,
+        dec=dec_A,
+        quantize_t=shared_quantize_t,  # SHARED codebook
+        quantize_b=shared_quantize_b,  # SHARED codebook
+        in_channel=cfg.model.input_channels,  # Pass this as per your __init__
+        channel=cfg.model.base_channels,  # Pass this as per your __init__
+        n_res_block=cfg.model.num_res_blocks,  # Pass this as per your __init__
+        n_res_channel=cfg.model.num_res_channels,  # Pass this as per your __init__
+        decay=cfg.model.decay_rate  # Pass this as per your __init__
+    )
+
+    # Model for Domain B
+    model_B = VQVAE2_Crossover(
+        enc_t=enc_t_B,
+        enc_b=enc_b_B,
+        dec_t=dec_t_B,
+        dec=dec_B,
+        quantize_t=shared_quantize_t,  # SHARED codebook (same object as model_A uses)
+        quantize_b=shared_quantize_b,  # SHARED codebook (same object as model_A uses)
+        in_channel=cfg.model.input_channels,  # Pass this (same for both domains) as per your __init__
+        channel=cfg.model.base_channels,  # Pass this as per your __init__
+        n_res_block=cfg.model.num_res_blocks,  # Pass this as per your __init__
+        n_res_channel=cfg.model.num_res_channels,  # Pass this as per your __init__
+        decay=cfg.model.decay_rate  # Pass this as per your __init__
+    )
+
     domain_models = {
-        CKPT_A_KEY: make_vqvae(),
-        CKPT_B_KEY: make_vqvae(),
+        CKPT_A_KEY: model_A,
+        CKPT_B_KEY: model_B
     }
+
+
 
     recon_loss_fn = CustomAggregateLoss(
         losses={"l1": nn.L1Loss(), "lpips": LPIPS(net_type="vgg", normalize=True)},
@@ -153,18 +211,21 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path, batch_size):
                 real_A = batch[DOMAIN_A_KEY]['input'].to(device)
                 real_B = batch[DOMAIN_B_KEY]['input'].to(device)
 
-                quant_t, quant_b, _, _, _ = lit_model.domain_models[DOMAIN_A_KEY].encode(real_A)
-                fake_B = lit_model.domain_models[DOMAIN_B_KEY].decode(quant_t, quant_b)
+                recon_A, *_ = lit_model.domain_models[DOMAIN_A_KEY](real_A)
+                recon_B,    *_ = lit_model.domain_models[DOMAIN_B_KEY](real_B)
 
-                fake_B = fake_B.clamp(0, 1)
-                real_B = real_B.clamp(0, 1)
+                quant_t_a, quant_b_a, *_ = lit_model.domain_models[DOMAIN_A_KEY].encode(real_A)
+                quant_t_b, quant_b_b, *_ = lit_model.domain_models[DOMAIN_B_KEY].encode(real_B)
+                A_to_B = lit_model.domain_models[DOMAIN_B_KEY].decode(quant_t_a, quant_b_a)
+                B_to_A = lit_model.domain_models[DOMAIN_A_KEY].decode(quant_t_b, quant_b_b)
 
-                psnr_scores.append(psnr_fn(fake_B, real_B).item())
-                ssim_scores.append(ssim_fn(fake_B, real_B).item())
-                mse_scores.append( mse_fn(fake_B,  real_B).item())
+
+                psnr_scores.append(psnr_fn(A_to_B, real_B).item())
+                ssim_scores.append(ssim_fn(A_to_B, real_B).item())
+                mse_scores.append(mse_fn(A_to_B,  real_B).item())
 
     return {
-        'model': 'Clasp_2D',
+        'model': 'Clasp_2D Cross domain',
         'mod1':  mod1,
         'mod2':  mod2,
         'ssim':  float(np.mean(ssim_scores)),
