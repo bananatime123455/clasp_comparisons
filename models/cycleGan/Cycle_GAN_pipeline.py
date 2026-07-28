@@ -29,12 +29,12 @@ class MRIGANPipeline:
         val_files,
         modality_1,
         modality_2,
-        batch_size       = 32,
-        buffer_size      = 1000,
-        epochs           = 100,
-        early_stopping_patience = 5,
-        early_stopping_delta    = 0.01,
-        data_dir_results = "results"
+        batch_size,
+        buffer_size,
+        epochs,
+        early_stopping_patience,
+        early_stopping_delta,
+        data_dir_results
     ):
         self.modality_1       = modality_1
         self.modality_2       = modality_2

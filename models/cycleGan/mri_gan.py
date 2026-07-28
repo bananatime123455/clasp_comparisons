@@ -47,12 +47,10 @@ def upsample(filters, size, apply_dropout=False):
 
 
 def unet_generator():
-    down_stack = [downsample(64, 4, False), downsample(
-        128, 4), downsample(256, 4)]
+    down_stack = [downsample(64, 4, False), downsample(128, 4), downsample(256, 4)]
     up_stack = [upsample(128, 4), upsample(64, 4)]
     initializer = tf.random_normal_initializer(0., 0.02)
-    last = tf.keras.layers.Conv2DTranspose(1, 4, strides=2, padding='same', kernel_initializer=initializer,
-                                           activation='tanh')
+    last = tf.keras.layers.Conv2DTranspose(1, 4, strides=2, padding='same', kernel_initializer=initializer, activation='tanh')
     concat = tf.keras.layers.Concatenate()
     inputs = tf.keras.layers.Input(shape=[256, 256, 1])
     x = inputs
