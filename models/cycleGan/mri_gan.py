@@ -13,14 +13,8 @@ class InstanceNormalization(tf.keras.layers.Layer):
             shape=input_shape[-1:], initializer='zeros', trainable=True)
 
     def call(self, x):
-        # Force CPU execution: the XLA/CUDA Sqrt kernel fails on some
-        # GPU+driver+TF combinations because libdevice.10.bc is missing.
-        # Pinning this lightweight arithmetic to CPU costs negligible time
-        # while the conv/deconv ops above and below still run on the GPU.
-        with tf.device("/CPU:0"):
-            mean, variance = tf.nn.moments(x, axes=[1, 2], keepdims=True)
-            result = self.scale * (x - mean) / tf.math.sqrt(variance + self.epsilon) + self.offset
-        return result
+        mean, variance = tf.nn.moments(x, axes=[1, 2], keepdims=True)
+        return self.scale * (x - mean) / tf.math.sqrt(variance + self.epsilon) + self.offset
 
 
 def downsample(filters, size, apply_norm=True):
@@ -47,12 +41,14 @@ def upsample(filters, size, apply_dropout=False):
 
 
 def unet_generator():
-    down_stack = [downsample(64, 4, False), downsample(128, 4), downsample(256, 4)]
+    down_stack = [downsample(64, 4, False), downsample(
+        128, 4), downsample(256, 4)]
     up_stack = [upsample(128, 4), upsample(64, 4)]
     initializer = tf.random_normal_initializer(0., 0.02)
-    last = tf.keras.layers.Conv2DTranspose(1, 4, strides=2, padding='same', kernel_initializer=initializer, activation='tanh')
+    last = tf.keras.layers.Conv2DTranspose(3, 4, strides=2, padding='same', kernel_initializer=initializer,
+                                           activation='tanh')
     concat = tf.keras.layers.Concatenate()
-    inputs = tf.keras.layers.Input(shape=[256, 256, 1])
+    inputs = tf.keras.layers.Input(shape=[256, 256, 3])
     x = inputs
 
     skips = []
@@ -71,7 +67,7 @@ def unet_generator():
 
 def discriminator():
     initializer = tf.random_normal_initializer(0., 0.02)
-    inputs = tf.keras.layers.Input(shape=[256, 256, 1])
+    inputs = tf.keras.layers.Input(shape=[256, 256, 3])
     x = inputs
     down1 = downsample(64, 4, False)(x)
     down2 = downsample(128, 4)(down1)

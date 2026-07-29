@@ -79,7 +79,15 @@ def load_h5_slices(h5_file_list, h5_key_1: str, h5_key_2: str):
 
 
 def _read_and_normalize_slice(h5_path, key, slice_idx):
-    """Read a single slice from an H5 file and min-max normalize it to [0, 1]."""
+    """
+    Read a single slice from an H5 file, min-max normalize it to [0, 1],
+    then rescale to [-1, 1].
+
+    The CycleGAN generator's output layer uses `tanh` (mri_gan.py), so real
+    images fed into the cycle-consistency / identity losses must live in the
+    same [-1, 1] range or those losses become meaningless. plotting.py's
+    `* 0.5 + 0.5` rescale-for-display logic already assumes this range.
+    """
     with h5py.File(h5_path, 'r') as f:
         dataset = f[key]
         raw = dataset[slice_idx].astype(np.float32)
@@ -92,14 +100,19 @@ def _read_and_normalize_slice(h5_path, key, slice_idx):
         else:
             img_min, img_max = float(np.min(raw)), float(np.max(raw))
 
-    normalized = (raw - img_min) / (img_max - img_min + 1e-8)
+    normalized = (raw - img_min) / (img_max - img_min + 1e-8)  # [0, 1]
+    normalized = normalized * 2.0 - 1.0                        # [-1, 1] (tanh range)
     return normalized
 
 
 def _build_tf_dataset(index_map, img_height, img_width, batch_size, buffer_size, shuffle=True):
     """
     Build a tf.data.Dataset from a flat index_map of (h5_path, key, slice_idx).
-    Each element is a (img_height, img_width, 1) float32 tensor.
+    Each element is a (img_height, img_width, 3) float32 tensor in [-1, 1].
+
+    The generator/discriminator (mri_gan.py) are hardcoded to accept
+    [256, 256, 3] inputs, so single-channel MRI slices are replicated across
+    3 channels rather than changing the model.
     """
     h5_paths   = [entry[0] for entry in index_map]
     keys       = [entry[1] for entry in index_map]
@@ -117,12 +130,19 @@ def _build_tf_dataset(index_map, img_height, img_width, batch_size, buffer_size,
             key_str     = key_b.numpy().decode('utf-8')
             idx         = int(slice_idx_b.numpy())
             img = _read_and_normalize_slice(h5_path_str, key_str, idx)
-            # Resize to the model's expected spatial size if needed
+
+            # Resize to the model's expected spatial size if needed.
+            # PIL mode 'F' (32-bit float) handles the [-1, 1] range without
+            # clipping, unlike the default uint8 inference from fromarray().
             if img.shape != (img_height, img_width):
                 from PIL import Image as PILImage
-                pil = PILImage.fromarray(img).resize(
+                pil = PILImage.fromarray(img, mode='F').resize(
                     (img_width, img_height), PILImage.BILINEAR)
                 img = np.array(pil, dtype=np.float32)
+
+            # (H, W) -> (H, W, 3): replicate the grayscale slice across
+            # channels so it matches the model's fixed RGB input shape.
+            img = np.stack([img, img, img], axis=-1)
             return img
 
         image = tf.py_function(
@@ -130,8 +150,7 @@ def _build_tf_dataset(index_map, img_height, img_width, batch_size, buffer_size,
             inp=[h5_path_t, key_t, slice_idx_t],
             Tout=tf.float32,
         )
-        image = tf.expand_dims(image, axis=-1)        # (H, W) → (H, W, 1)
-        image.set_shape([img_height, img_width, 1])
+        image.set_shape([img_height, img_width, 3])
         return image
 
     ds = combined.map(load_slice, num_parallel_calls=AUTOTUNE)
@@ -145,6 +164,11 @@ def load_datasets(train_files, test_files, val_files,
                   modality_1: str, modality_2: str,
                   img_height: int, img_width: int,
                   batch_size: int, buffer_size: int):
+    """
+    Build train/test/val tf.data pipelines for two modalities directly from
+    HDF5 files, returning (H, W, 3) float32 tensors in [-1, 1] as np-backed
+    tensors ready to feed straight into the existing CycleGAN models.
+    """
     h5_key_1 = resolve_h5_key(modality_1)
     h5_key_2 = resolve_h5_key(modality_2)
 

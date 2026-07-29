@@ -1,125 +1,91 @@
-import matplotlib.pyplot as plt
+import pathlib
 import numpy as np
+import matplotlib.pyplot as plt
 
 
-def generate_images(generator_g, test1, generator_f, test2, epoch, data_dir_results):
+def generate_images(generator_g, test1, generator_f, test2, epoch, output_dir):
+    """Save a 2x2 grid of {input, translated} images for both directions."""
+    output_dir = pathlib.Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     prediction1 = generator_g(test1, training=False)
     prediction2 = generator_f(test2, training=False)
-
-    def to_plot(tensor):
-        """Return the first image in the batch as a (H, W) numpy array."""
-        return tensor[0, :, :, 0].numpy()
-
     plt.figure(figsize=(8, 8))
-    display_list = [
-        to_plot(test1),
-        to_plot(prediction1),
-        to_plot(test2),
-        to_plot(prediction2),
-    ]
-    title = ['Input T1 Image', 'Translated to T2', 'Input T2 Image', 'Translated to T1']
+    display_list = [test1[0], prediction1[0], test2[0], prediction2[0]]
+    title = ['Input Mod 1 Image', 'Translated to  Mod 2',
+             'Input Mod 2 Image', 'Translated to Mod 1']
 
     for i in range(4):
         plt.subplot(2, 2, i + 1)
         plt.title(title[i])
-        plt.imshow(display_list[i] * 0.5 + 0.5, cmap='gray')
+        # Images are in [-1, 1] (tanh range) -> rescale to [0, 1] for display.
+        plt.imshow(display_list[i].numpy()[:, :, 0] * 0.5 + 0.5, cmap='gray')
         plt.axis('off')
 
-    plt.savefig(data_dir_results / 'image_at_epoch_{:04d}.png'.format(epoch))
+    save_path = output_dir / f'image_at_epoch_{epoch:04d}.png'
+    plt.savefig(save_path)
     plt.close()
 
 
-def plot_losses(gen_g_loss, gen_f_loss, disc_x_loss, disc_y_loss,
-                data_dir_results, cycle_loss, identity_loss1, identity_loss2):
+def plot_losses(gen_g_loss, gen_f_loss, disc_x_loss, disc_y_loss, output_dir,
+                 cycle_loss=None, identity_loss1=None, identity_loss2=None):
+    """Plot generator/discriminator loss curves (and optional component
+    losses) over training epochs and save to output_dir/loss_curves.png."""
+    output_dir = pathlib.Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    epochs = np.arange(len(gen_g_loss))
+    epochs = range(1, len(gen_g_loss) + 1)
 
-    fig, axs = plt.subplots(2, 4, figsize=(14, 8))
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, gen_g_loss, label='Generator G loss')
+    plt.plot(epochs, gen_f_loss, label='Generator F loss')
+    plt.plot(epochs, disc_x_loss, label='Discriminator X loss')
+    plt.plot(epochs, disc_y_loss, label='Discriminator Y loss')
 
-    axs[0, 0].plot(epochs, gen_g_loss)
-    axs[0, 0].set_title("Generator G Loss")
-    axs[0, 0].set_xlabel("Epoch")
-    axs[0, 0].set_ylabel("Loss")
-    axs[0, 0].grid(True)
+    if cycle_loss is not None and any(cycle_loss):
+        plt.plot(epochs, cycle_loss, label='Cycle loss', linestyle='--')
+    if identity_loss1 is not None and any(identity_loss1):
+        plt.plot(epochs, identity_loss1, label='Identity loss (X)', linestyle=':')
+    if identity_loss2 is not None and any(identity_loss2):
+        plt.plot(epochs, identity_loss2, label='Identity loss (Y)', linestyle=':')
 
-    axs[0, 1].plot(epochs, gen_f_loss)
-    axs[0, 1].set_title("Generator F Loss")
-    axs[0, 1].set_xlabel("Epoch")
-    axs[0, 1].set_ylabel("Loss")
-    axs[0, 1].grid(True)
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('CycleGAN Training Losses')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_dir / 'loss_curves.png')
+    plt.close()
 
-    axs[0, 2].plot(epochs, disc_x_loss)
-    axs[0, 2].set_title("Discriminator X Loss")
-    axs[0, 2].set_xlabel("Epoch")
-    axs[0, 2].set_ylabel("Loss")
-    axs[0, 2].grid(True)
 
-    axs[0, 3].plot(epochs, disc_y_loss)
-    axs[0, 3].set_title("Discriminator Y Loss")
-    axs[0, 3].set_xlabel("Epoch")
-    axs[0, 3].set_ylabel("Loss")
-    axs[0, 3].grid(True)
+def plot_metrics(ssim_vals, psnr_vals, mse_vals, output_dir):
+    """
+    Plot distributions of the per-slice SSIM, PSNR, and MSE computed between
+    reconstructed modality-2 images and the real modality-2 images, and save
+    to output_dir/eval_metrics.png. Also prints summary means.
+    """
+    output_dir = pathlib.Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    axs[1, 0].plot(epochs, cycle_loss)
-    axs[1, 0].set_title("Cycle Consistency Loss")
-    axs[1, 0].set_xlabel("Epoch")
-    axs[1, 0].set_ylabel("Loss")
-    axs[1, 0].grid(True)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-    axs[1, 1].plot(epochs, identity_loss1)
-    axs[1, 1].set_title("Identity Loss A to B")
-    axs[1, 1].set_xlabel("Epoch")
-    axs[1, 1].set_ylabel("Loss")
-    axs[1, 1].grid(True)
+    axes[0].hist(ssim_vals, bins=20, color='tab:blue')
+    axes[0].set_title(f'SSIM (mean={np.mean(ssim_vals):.4f})')
+    axes[0].set_xlabel('SSIM')
 
-    axs[1, 2].plot(epochs, identity_loss2)
-    axs[1, 2].set_title("Identity Loss B to A")
-    axs[1, 2].set_xlabel("Epoch")
-    axs[1, 2].set_ylabel("Loss")
-    axs[1, 2].grid(True)
+    axes[1].hist(psnr_vals, bins=20, color='tab:orange')
+    axes[1].set_title(f'PSNR (mean={np.mean(psnr_vals):.4f} dB)')
+    axes[1].set_xlabel('PSNR (dB)')
 
-    # Leave axs[1,3] blank so layout stays consistent
-    axs[1, 3].axis('off')
+    axes[2].hist(mse_vals, bins=20, color='tab:green')
+    axes[2].set_title(f'MSE (mean={np.mean(mse_vals):.6f})')
+    axes[2].set_xlabel('MSE')
 
     plt.tight_layout()
-    plt.savefig(data_dir_results / "losses.png")
+    plt.savefig(output_dir / 'eval_metrics.png')
     plt.close()
 
-
-def plot_metrics(ssim_vals, psnr_vals, mse_vals, data_dir_results):
-
-    epochs = np.arange(len(ssim_vals))
-
-    avg_ssim = np.mean(ssim_vals)
-    avg_psnr = np.mean(psnr_vals)
-    avg_mse  = np.mean(mse_vals)
-
-    fig, axs = plt.subplots(3, 1, figsize=(10, 10))
-
-    axs[0].plot(epochs, ssim_vals, label="SSIM")
-    axs[0].axhline(avg_ssim, linestyle="--", label=f"Avg: {avg_ssim:.4f}")
-    axs[0].set_title("SSIM vs Epoch")
-    axs[0].set_xlabel("Epoch")
-    axs[0].set_ylabel("SSIM")
-    axs[0].legend()
-    axs[0].grid(True)
-
-    axs[1].plot(epochs, psnr_vals, label="PSNR")
-    axs[1].axhline(avg_psnr, linestyle="--", label=f"Avg: {avg_psnr:.2f}")
-    axs[1].set_title("PSNR vs Epoch")
-    axs[1].set_xlabel("Epoch")
-    axs[1].set_ylabel("PSNR")
-    axs[1].legend()
-    axs[1].grid(True)
-
-    axs[2].plot(epochs, mse_vals, label="MSE")
-    axs[2].axhline(avg_mse, linestyle="--", label=f"Avg: {avg_mse:.6f}")
-    axs[2].set_title("MSE vs Epoch")
-    axs[2].set_xlabel("Epoch")
-    axs[2].set_ylabel("MSE")
-    axs[2].legend()
-    axs[2].grid(True)
-
-    plt.tight_layout()
-    plt.savefig(data_dir_results / "metrics.png")
-    plt.close()
+    print(
+        f"Eval metrics — SSIM: {np.mean(ssim_vals):.4f} | "
+        f"PSNR: {np.mean(psnr_vals):.4f} dB | MSE: {np.mean(mse_vals):.6f}"
+    )

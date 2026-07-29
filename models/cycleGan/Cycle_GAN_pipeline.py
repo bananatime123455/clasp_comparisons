@@ -57,6 +57,9 @@ class MRIGANPipeline:
         self.discriminator_y_optimizer  = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 
         # ── Datasets ────────────────────────────────────────────────────────
+        # load_datasets (data_processing.py) reads the given H5 files and
+        # yields (H, W, 3) float32 batches in [-1, 1], matching the
+        # generator's tanh output range and the model's fixed RGB input shape.
         (
             self.tr1_train, self.tr2_train,
             self.tr1_test,  self.tr2_test,
@@ -129,8 +132,13 @@ class MRIGANPipeline:
 
     def _compute_metrics(self, dataset_x, dataset_y):
         """
-        Compute SSIM, PSNR, and MSE of generator_g predictions against
-        real modality_2 images on the provided dataset pair.
+        Compute SSIM, PSNR, and MSE between generator_g's reconstruction of
+        modality_2 (fake_y = generator_g(real_x)) and the real modality_2
+        images, on the provided dataset pair.
+
+        Model outputs live in tanh range [-1, 1]; both prediction and target
+        are rescaled to [0, 1] before scoring so the metrics (and the
+        data_range=1.0 passed to skimage) are meaningful.
         """
         ssim_vals, psnr_vals, mse_vals = [], [], []
 
@@ -139,8 +147,9 @@ class MRIGANPipeline:
             real_y_np = real_y.numpy()
 
             for i in range(real_x.shape[0]):
-                pred  = fake_y[i, :, :, 0]
-                truth = real_y_np[i, :, :, 0]
+                # Rescale from tanh range [-1, 1] to [0, 1] for scoring.
+                pred  = np.clip(fake_y[i, :, :, 0] * 0.5 + 0.5, 0.0, 1.0)
+                truth = np.clip(real_y_np[i, :, :, 0] * 0.5 + 0.5, 0.0, 1.0)
 
                 mse = float(np.mean((pred - truth) ** 2))
                 mse_vals.append(mse)
