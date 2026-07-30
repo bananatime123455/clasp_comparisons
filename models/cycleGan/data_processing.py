@@ -80,18 +80,13 @@ def load_h5_slices(h5_file_list, h5_key_1: str, h5_key_2: str):
 
 def _read_and_normalize_slice(h5_path, key, slice_idx):
     """
-    Read a single slice from an H5 file, min-max normalize it to [0, 1],
-    then rescale to [-1, 1].
-
-    The CycleGAN generator's output layer uses `tanh` (mri_gan.py), so real
-    images fed into the cycle-consistency / identity losses must live in the
-    same [-1, 1] range or those losses become meaningless. plotting.py's
-    `* 0.5 + 0.5` rescale-for-display logic already assumes this range.
+    Read a single slice from an H5 file and min-max normalize it directly
+    to [-1, 1].
     """
     with h5py.File(h5_path, 'r') as f:
         dataset = f[key]
         raw = dataset[slice_idx].astype(np.float32)
-
+ 
         # Use volume-level stats if stored, otherwise fall back to slice stats
         v_min = dataset.attrs.get('volume_min')
         v_max = dataset.attrs.get('volume_max')
@@ -99,10 +94,10 @@ def _read_and_normalize_slice(h5_path, key, slice_idx):
             img_min, img_max = float(v_min), float(v_max)
         else:
             img_min, img_max = float(np.min(raw)), float(np.max(raw))
-
-    normalized = (raw - img_min) / (img_max - img_min + 1e-8)  # [0, 1]
-    normalized = normalized * 2.0 - 1.0                        # [-1, 1] (tanh range)
+ 
+    normalized = 2.0 * (raw - img_min) / (img_max - img_min + 1e-8) - 1.0  # [-1, 1]
     return normalized
+
 
 
 def _build_tf_dataset(index_map, img_height, img_width, batch_size, buffer_size, shuffle=True):

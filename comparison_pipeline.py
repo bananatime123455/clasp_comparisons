@@ -62,7 +62,7 @@ class comp_pipeline:
                 epochs=self.epochs,
                 early_stopping_patience=self.es_patience,
                 early_stopping_delta=self.es_delta,
-                data_dir_results = "results"
+                data_dir_results = "./Results/cycle_GAN_run"
             )
             results = cyclegan.train()
             if results:

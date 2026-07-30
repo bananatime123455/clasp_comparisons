@@ -11,9 +11,9 @@ from torch.utils.data import DataLoader
 from imaginaire.datasets.h5_mri import H5MRIDataset
 
 
-def get_train_and_val_dataloader(cfg, train_files: list, val_files: list):
+def get_train_and_test_dataloader(cfg, train_files: list, test_files: list):
     """
-    Build train and val DataLoaders directly from H5 file lists.
+    Build train and test DataLoaders directly from H5 file lists.
 
     Parameters
     ----------
@@ -23,12 +23,12 @@ def get_train_and_val_dataloader(cfg, train_files: list, val_files: list):
             cfg.data.modality_b
             cfg.data.num_workers
             cfg.data.train.batch_size
-            cfg.data.val.batch_size
+            cfg.data.test.batch_size
             cfg.data.train.augmentations
-            cfg.data.val.augmentations
+            cfg.data.test.augmentations
     train_files : list[Path]
         Already-split train H5 paths from sort_data().
-    val_files : list[Path]
+    test_files : list[Path]
         Already-split val H5 paths from sort_data().
     """
     modality_a  = cfg.data.modality_a
@@ -36,10 +36,10 @@ def get_train_and_val_dataloader(cfg, train_files: list, val_files: list):
     num_workers = getattr(cfg.data, "num_workers", 4)
 
     train_aug = _parse_aug(cfg.data.train.augmentations)
-    val_aug   = _parse_aug(cfg.data.val.augmentations)
+    test_aug   = _parse_aug(cfg.data.test.augmentations)
 
     print(f"[get_h5_dataloaders] train={len(train_files)} subjects, "
-          f"val={len(val_files)} subjects")
+          f"test={len(test_files)} subjects")
 
     train_dataset = H5MRIDataset(
         h5_files=train_files,
@@ -47,11 +47,11 @@ def get_train_and_val_dataloader(cfg, train_files: list, val_files: list):
         modality_b=modality_b,
         augmentations=train_aug,
     )
-    val_dataset = H5MRIDataset(
-        h5_files=val_files,
+    test_dataset = H5MRIDataset(
+        h5_files=test_files,
         modality_a=modality_a,
         modality_b=modality_b,
-        augmentations=val_aug,
+        augmentations=test_aug,
     )
 
     train_loader = DataLoader(
@@ -63,8 +63,8 @@ def get_train_and_val_dataloader(cfg, train_files: list, val_files: list):
         drop_last=True,             # consistent batch sizes for GAN training
         persistent_workers=num_workers > 0,
     )
-    val_loader = DataLoader(
-        val_dataset,
+    test_loader = DataLoader(
+        test_dataset,
         batch_size=cfg.data.val.batch_size,
         shuffle=False,
         num_workers=num_workers,
@@ -72,7 +72,7 @@ def get_train_and_val_dataloader(cfg, train_files: list, val_files: list):
         persistent_workers=num_workers > 0,
     )
 
-    return train_loader, val_loader
+    return train_loader, test_loader
 
 
 def _parse_aug(aug_cfg) -> dict:
@@ -95,7 +95,7 @@ def _parse_aug(aug_cfg) -> dict:
         out[k] = v
     return out
 
-def get_test_dataloader(cfg, test_files: list):
+def get_val_dataloader(cfg, val_files: list):
     """
     Build a DataLoader for evaluation, reusing H5MRIDataset the same way
     get_train_and_val_dataloader does. Used by inference_h5.py to feed
@@ -107,16 +107,16 @@ def get_test_dataloader(cfg, test_files: list):
 
     test_aug = _parse_aug(cfg.test_data.test.augmentations)
 
-    print(f"[get_h5_dataloaders] test={len(test_files)} subjects")
+    print(f"[get_h5_dataloaders] test={len(val_files)} subjects")
 
     test_dataset = H5MRIDataset(
-        h5_files=test_files,
+        h5_files=val_files,
         modality_a=modality_a,
         modality_b=modality_b,
         augmentations=test_aug,
     )
 
-    test_loader = DataLoader(
+    val_loader = DataLoader(
         test_dataset,
         batch_size=getattr(cfg.test_data.test, "batch_size", 1),
         shuffle=False,
@@ -124,4 +124,4 @@ def get_test_dataloader(cfg, test_files: list):
         pin_memory=True,
         persistent_workers=num_workers > 0,
     )
-    return test_loader
+    return val_loader

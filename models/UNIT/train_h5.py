@@ -8,7 +8,7 @@ if _HERE not in sys.path:
 
 #ensure h5 data is loaded instead of LMDB/folder data
 import imaginaire.utils.dataset as _iu_dataset
-from get_h5_dataloaders import get_train_and_val_dataloader as _h5_loader
+from get_h5_dataloaders import get_train_and_test_dataloader as _h5_loader
 from imaginaire.config import Config as _Config
 
 
@@ -23,9 +23,9 @@ def _patched_loader(cfg, seed=0):
     val_list   = Path(cfg.data.val_file_list)
 
     train_files = [Path(p) for p in train_list.read_text().splitlines() if p.strip()]
-    val_files   = [Path(p) for p in val_list.read_text().splitlines()   if p.strip()]
+    test_files   = [Path(p) for p in val_list.read_text().splitlines()   if p.strip()]
 
-    return _h5_loader(cfg, train_files=train_files, val_files=val_files)
+    return _h5_loader(cfg, train_files=train_files, test_files=test_files)
 
 
 #set it so that imaginaire's train.py will use our H5 dataloader instead of the default LMDB/folder loader

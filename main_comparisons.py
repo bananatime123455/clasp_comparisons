@@ -11,9 +11,9 @@ def parse_args():
                         help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
     parser.add_argument('--data_dir_results',     type=str, default="./Results/")
     parser.add_argument('--models_comparing',     type=str, default="Clasp_2D",
-                        help="Valid options: cycle_GAN, Clasp_2D, UNIT") 
+                        help="Valid options: cycle_GAN,Clasp_2D,UNIT (Comma-separated list of models to compare with no spaces before or after commas)") 
     #training parameters
-    parser.add_argument('--epochs',               type=int, default=10)
+    parser.add_argument('--epochs',               type=int, default=100)
     parser.add_argument('--batch_size',           type=int, default=8)
     parser.add_argument('--buffer_size',          type=int, default=10)
     parser.add_argument('--early_stopping_patience', type=int,   default=3)
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         modality_1=args.modality_1,
         modality_2=args.modality_2,
         data_dir_results=args.data_dir_results,
-        models_comparing=[m.strip() for m in args.models_comparing.split(',')],
+        models_comparing=[m.strip() for m in args.models_comparing.split(',') if m.strip()],
         epochs=args.epochs,
         batch_size=args.batch_size,
         buffer_size=args.buffer_size,

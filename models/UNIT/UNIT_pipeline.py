@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 from data_processing import CKPT_TO_HDF5, resolve_h5_key
+from models.metrics import compute_metrics
 
 import h5py
 import numpy as np
@@ -76,7 +77,7 @@ class UNITPipeline:
         steps.update(1)
 
         steps.set_description("[UNITPipeline] Computing metrics")
-        ssim_vals, psnr_vals, mse_vals = self._compute_metrics()
+        ssim_vals, psnr_vals, mse_vals = compute_metrics._compute_metrics()
         steps.update(1)
         steps.set_description("[UNITPipeline] Done")
         steps.close()
@@ -254,7 +255,7 @@ test_data:
         tqdm.write(f"[UNITPipeline] Config → {self.config_path}")
 
     # ------------------------------------------------------------------
-    # Step 2 — train locally (no Docker)
+    # Step 2 — train 
     # ------------------------------------------------------------------
 
     def _run_training(self) -> int:
@@ -275,7 +276,7 @@ test_data:
         return self._parse_last_iteration()
 
     # ------------------------------------------------------------------
-    # Step 3 — inference locally (no Docker)
+    # Step 3 — inference 
     # ------------------------------------------------------------------
 
     def _run_inference(self):
@@ -302,29 +303,7 @@ test_data:
         if result.returncode != 0:
             tqdm.write(f"[UNITPipeline] Inference exit {result.returncode}.")
 
-    # ------------------------------------------------------------------
-    # Step 4 — compute metrics from saved inference outputs
-    # ------------------------------------------------------------------
 
-    def _compute_metrics(self):
-        metrics_json = self.inference_dir / "metrics.json"
-        if not metrics_json.exists():
-            tqdm.write("[UNITPipeline] No metrics.json from inference — returning zeros.")
-            return [0.0], [0.0], [0.0]
-
-        d = json.loads(metrics_json.read_text())
-        ssim_vals, psnr_vals, mse_vals = d["ssim"], d["psnr"], d["mse"]
-
-        for _ in tqdm(
-            range(len(ssim_vals)),
-            desc="[UNITPipeline]   aggregating metrics",
-            unit="slice",
-            position=1,
-            leave=False,
-        ):
-            pass  # metrics already computed by evaluate_h5.py; bar shown for visibility
-
-        return ssim_vals, psnr_vals, mse_vals
 
     # ------------------------------------------------------------------
     # Helpers
