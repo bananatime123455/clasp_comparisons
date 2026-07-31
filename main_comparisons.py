@@ -11,7 +11,7 @@ def parse_args():
                         help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
     parser.add_argument('--data_dir_results',     type=str, default="./Results/")
     parser.add_argument('--models_comparing',     type=str, default="Clasp_2D",
-                        help="Valid options: cycle_GAN,Clasp_2D,UNIT (Comma-separated list of models to compare with no spaces before or after commas)") 
+                        help="Valid options: cycle_GAN,Clasp_2D,UNIT,pix2pixHD (Comma-separated list of models to compare with no spaces before or after commas)") 
     #training parameters
     parser.add_argument('--epochs',               type=int, default=100)
     parser.add_argument('--batch_size',           type=int, default=8)
