@@ -13,6 +13,7 @@ from vqvae2_crossover import Quantize, Encoder, Decoder, VQVAE2_Crossover
 from datasets import HDF5MultiDomainDataset
 from custom_losses import CustomAggregateLoss
 from lit_model import LitVQVAE2DualDomainCrossover
+from models.metrics import compute_metrics
 
 # Maps checkpoint domain keys -> HDF5 suffix keys
 CKPT_TO_HDF5 = {
@@ -200,29 +201,20 @@ def Clasp_2D_model(val_files, mod1, mod2, checkpoint_path, batch_size):
     loader = DataLoader(val_dataset, batch_size, shuffle=False,
                         num_workers=12, pin_memory=True)
 
-    psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device)
-    ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-    mse_fn  = MeanSquaredError().to(device)
+    metrics_computer = compute_metrics(device=device)
 
-    psnr_scores, ssim_scores, mse_scores = [], [], []
-    
-    with torch.no_grad():
-            for batch in tqdm(loader, desc="Evaluating CLASP-2D"):
-                real_A = batch[DOMAIN_A_KEY]['input'].to(device)
-                real_B = batch[DOMAIN_B_KEY]['input'].to(device)
+    def clasp_step(batch):
+        real_A = batch[DOMAIN_A_KEY]['input'].to(device)
+        real_B = batch[DOMAIN_B_KEY]['input'].to(device)
+        quant_t_a, quant_b_a, *_ = lit_model.domain_models[DOMAIN_A_KEY].encode(real_A)
+        A_to_B = lit_model.domain_models[DOMAIN_B_KEY].decode(quant_t_a, quant_b_a)
+        return A_to_B, real_B
 
-                recon_A, *_ = lit_model.domain_models[DOMAIN_A_KEY](real_A)
-                recon_B,    *_ = lit_model.domain_models[DOMAIN_B_KEY](real_B)
-
-                quant_t_a, quant_b_a, *_ = lit_model.domain_models[DOMAIN_A_KEY].encode(real_A)
-                quant_t_b, quant_b_b, *_ = lit_model.domain_models[DOMAIN_B_KEY].encode(real_B)
-                A_to_B = lit_model.domain_models[DOMAIN_B_KEY].decode(quant_t_a, quant_b_a)
-                B_to_A = lit_model.domain_models[DOMAIN_A_KEY].decode(quant_t_b, quant_b_b)
-
-
-                psnr_scores.append(psnr_fn(A_to_B, real_B).item())
-                ssim_scores.append(ssim_fn(A_to_B, real_B).item())
-                mse_scores.append(mse_fn(A_to_B,  real_B).item())
+    ssim_scores, psnr_scores, mse_scores = metrics_computer._compute_metrics_pytorch(
+        loader=loader,
+        step_fn=clasp_step,
+        model_name="CLASP-2D",
+    )
 
     return {
         'model': 'Clasp_2D Cross domain',

@@ -182,7 +182,7 @@ class MRIGANPipeline:
 
         # ── Final metrics on val set ────────────────────────────────────────
         metrics = compute_metrics(self.generator_g)
-        ssim_vals, psnr_vals, mse_vals = metrics._compute_metrics(self.tr1_val, self.tr2_val)
+        ssim_vals, psnr_vals, mse_vals = metrics._compute_metrics_tensorflow(self.tr1_val, self.tr2_val, "cycleGAN")
 
         n = len(history["gen_g_loss"])
         plot_losses(
