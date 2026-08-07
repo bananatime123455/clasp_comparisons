@@ -1,1 +1,1 @@
-latest_checkpoint: epoch_00002_iteration_000000100_checkpoint.pt
+latest_checkpoint: epoch_00015_iteration_000000600_checkpoint.pt

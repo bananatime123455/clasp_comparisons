@@ -43,6 +43,9 @@ def parse_args():
     parser.add_argument('--wandb_id', type=str)
     parser.add_argument('--resume', type=int)
     parser.add_argument('--num_workers', type=int)
+    parser.add_argument('--early_stopping_patience', type=int, default=0,
+                        help='Epochs to wait for FID improvement before stopping (0 disables).')
+    parser.add_argument('--early_stopping_delta', type=float, default=0.0)
     args = parser.parse_args()
     return args
 
@@ -95,6 +98,15 @@ def main():
                           sch_G, sch_D,
                           train_data_loader, val_data_loader)
     resumed, current_epoch, current_iteration = trainer.load_checkpoint(cfg, args.checkpoint, args.resume)
+
+    from early_stopping import EarlyStopping
+
+    early_stopper = None
+    if args.early_stopping_patience > 0:
+        early_stopper = EarlyStopping(
+            patience=args.early_stopping_patience,
+            delta=args.early_stopping_delta,
+        )
 
     # Initialize Wandb.
     if is_master():
@@ -161,8 +173,23 @@ def main():
 
         current_epoch += 1
         trainer.end_of_epoch(data, current_epoch, current_iteration)
-    print('Done with training!!!')
-    return
+
+        if early_stopper is not None and current_iteration % cfg.metrics_iter == 0:
+            val_loss = trainer.cur_fid_a + trainer.cur_fid_b
+            print(f"[EarlyStopping] Epoch {current_epoch}: "
+                  f"FID_a={trainer.cur_fid_a:.4f}, FID_b={trainer.cur_fid_b:.4f}, "
+                  f"combined={val_loss:.4f}")
+
+            early_stopper(val_loss, {"gen": net_G, "dis": net_D})
+            if early_stopper.early_stop:
+                print(f"[EarlyStopping] No improvement for "
+                      f"{early_stopper.patience} metric checks — "
+                      f"stopping at epoch {current_epoch}.")
+                early_stopper.load_best_weights({"gen": net_G, "dis": net_D})
+                trainer.save_checkpoint(current_epoch, current_iteration)
+                print('Done with training!!!')
+                return
+
 
 
 if __name__ == "__main__":

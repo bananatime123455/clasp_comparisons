@@ -45,6 +45,8 @@ class UNITPipeline:
         self.modality_2  = modality_2
         self.batch_size  = batch_size
         self.epochs      = epochs
+        self.early_stopping_patience = early_stopping_patience   
+        self.early_stopping_delta    = early_stopping_delta      
         self.num_workers = num_workers
         self.image_size  = image_size
 
@@ -222,6 +224,13 @@ data:
             random_scale_limit: 0.1
             horizontal_flip: True
             random_crop_h_w: {sz}, {sz}
+    test:
+        roots:
+            - '{self.logdir}'
+        batch_size: 1
+        augmentations:
+            resize_smallest_side: {sz}
+            center_crop_h_w: {sz}, {sz}
     val:
         roots:
             - '{self.logdir}'
@@ -266,6 +275,8 @@ test_data:
             "--config", str(self.config_path.resolve()),
             "--logdir", str(self.logdir.resolve()),
             "--single_gpu",
+            "--early_stopping_patience", str(self.early_stopping_patience),
+            "--early_stopping_delta", str(self.early_stopping_delta),
         ]
         tqdm.write(f"[UNITPipeline] Inner command:\n  {' '.join(train_cmd)}")
         result = subprocess.run(train_cmd, cwd=str(_UNIT_DIR), check=False)

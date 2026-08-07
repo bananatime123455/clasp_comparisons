@@ -203,22 +203,24 @@ class Trainer(BaseTrainer):
             return vis_images
 
     def write_metrics(self):
-        r"""Compute metrics and save them to tensorboard"""
-        cur_fid_a, cur_fid_b = self._compute_fid()
-        if self.best_fid_a is not None:
-            self.best_fid_a = min(self.best_fid_a, cur_fid_a)
-        else:
-            self.best_fid_a = cur_fid_a
-        if self.best_fid_b is not None:
-            self.best_fid_b = min(self.best_fid_b, cur_fid_b)
-        else:
-            self.best_fid_b = cur_fid_b
-        self._write_to_meters({'FID_a': cur_fid_a,
-                               'best_FID_a': self.best_fid_a,
-                               'FID_b': cur_fid_b,
-                               'best_FID_b': self.best_fid_b},
-                              self.metric_meters)
-        self._flush_meters(self.metric_meters)
+            r"""Compute metrics and save them to tensorboard"""
+            cur_fid_a, cur_fid_b = self._compute_fid()
+            self.cur_fid_a = cur_fid_a   # NEW — lets train.py read this without recomputing
+            self.cur_fid_b = cur_fid_b   # NEW
+            if self.best_fid_a is not None:
+                self.best_fid_a = min(self.best_fid_a, cur_fid_a)
+            else:
+                self.best_fid_a = cur_fid_a
+            if self.best_fid_b is not None:
+                self.best_fid_b = min(self.best_fid_b, cur_fid_b)
+            else:
+                self.best_fid_b = cur_fid_b
+            self._write_to_meters({'FID_a': cur_fid_a,
+                                'best_FID_a': self.best_fid_a,
+                                'FID_b': cur_fid_b,
+                                'best_FID_b': self.best_fid_b},
+                                self.metric_meters)
+            self._flush_meters(self.metric_meters)
 
     def _compute_fid(self):
         r"""Compute FID for both domains.
