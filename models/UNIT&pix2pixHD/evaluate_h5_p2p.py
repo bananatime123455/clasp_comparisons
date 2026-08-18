@@ -2,6 +2,17 @@ import sys, os, json, argparse
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+import sys, os
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+_PROJECT_ROOT = _HERE.parent.parent  # .../comparisons  (models/UNIT&pix2pixHD -> models -> comparisons)
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
 from models.metrics import compute_metrics
 
 _HERE = os.path.dirname(os.path.abspath(__file__))

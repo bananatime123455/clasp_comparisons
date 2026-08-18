@@ -1,8 +1,16 @@
+# models/UNIT&pix2pixHD/train_h5_p2p.py
 import sys, os
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
+from pathlib import Path
 
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+_PROJECT_ROOT = _HERE.parent.parent  # models/UNIT&pix2pixHD -> models -> comparisons
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+# ensure h5 data is loaded instead of LMDB/folder data
 import imaginaire.utils.dataset as _iu_dataset
 from get_h5_dataloaders_p2p import get_train_and_test_dataloader as _h5_loader
 

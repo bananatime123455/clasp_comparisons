@@ -57,6 +57,11 @@ class UNITPipeline:
         self.config_path = self.logdir / "unit_mri.yaml"
 
     def train(self) -> dict:
+        for old_ckpt in self.logdir.glob("*.pt"):
+            old_ckpt.unlink()
+        old_latest = self.logdir / "latest_checkpoint.txt"
+        if old_latest.exists():
+            old_latest.unlink()
         steps = tqdm(
             total=4,
             desc="[UNITPipeline] Overall progress",
