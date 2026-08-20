@@ -4,6 +4,7 @@ from torchmetrics import MeanSquaredError
 from tqdm import tqdm
 import tensorflow as tf
 
+tf.config.set_visible_devices([], 'GPU')
 
 class compute_metrics:
     def __init__(self, generator_g=None, device=None):

@@ -1,1 +1,1 @@
-/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results/BraTS2021_00568/BraTS2021_00568.h5
+Data/BRATS/BraTS2021_00568/BraTS2021_00568.h5

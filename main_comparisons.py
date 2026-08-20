@@ -4,7 +4,7 @@ from comparison_pipeline import comp_pipeline
 
 def parse_args():
     parser = argparse.ArgumentParser(description="MRI GAN Comparison Pipeline")
-    parser.add_argument('--h5_path',              type=str, default="/mnt/r/User_Workspaces/Eric_Ma/New_Registration_Results/")
+    parser.add_argument('--h5_path',              type=str, default="./Data/BRATS")
     parser.add_argument('--modality_1', type=str, default="Axial_T1_post",
                         help="Valid options: Axial_T1_post, Axial_T1_pre, Axial_T2, Axial_FLAIR")
     parser.add_argument('--modality_2', type=str, default="Axial_T2",
@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument('--models_comparing',     type=str, default="Clasp_2D",
                         help="Valid options: cycle_GAN,Clasp_2D,UNIT,pix2pixHD,MUNIT (Comma-separated list of models to compare with no spaces before or after commas)") 
     #training parameters
-    parser.add_argument('--epochs',               type=int, default=15)
+    parser.add_argument('--epochs',               type=int, default=6)
     parser.add_argument('--batch_size',           type=int, default=8)
     parser.add_argument('--buffer_size',          type=int, default=10)
     parser.add_argument('--early_stopping_patience', type=int,   default=3)
