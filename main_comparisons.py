@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument('--models_comparing',     type=str, default="Clasp_2D",
                         help="Valid options: cycle_GAN,Clasp_2D,UNIT,pix2pixHD,MUNIT (Comma-separated list of models to compare with no spaces before or after commas)") 
     #training parameters
-    parser.add_argument('--epochs',               type=int, default=6)
+    parser.add_argument('--epochs',               type=int, default=2)
     parser.add_argument('--batch_size',           type=int, default=8)
     parser.add_argument('--buffer_size',          type=int, default=10)
     parser.add_argument('--early_stopping_patience', type=int,   default=3)

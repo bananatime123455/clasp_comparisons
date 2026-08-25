@@ -1,6 +1,9 @@
 Bootstrap: docker
 From: nvcr.io/nvidia/clara/monai-toolkit:3.0
 
+%files
+    "models/UNIT_pix2pixHD" /opt/imaginaire_src
+
 %post
     # The %post section is executed inside the container after the base OS has been set up.
     export DEBIAN_FRONTEND=noninteractive
@@ -37,6 +40,15 @@ From: nvcr.io/nvidia/clara/monai-toolkit:3.0
         torchvision==0.25.0+cu128 \
         torchaudio==2.10.0+cu128 \
         --index-url https://download.pytorch.org/whl/cu128
+
+    echo "Building imaginaire's custom CUDA extensions from local source..."
+    for p in correlation channelnorm resample2d bias_act upfirdn2d; do
+        echo "Building ${p}..."
+        cd "/opt/imaginaire_src/imaginaire/third_party/${p}"
+        rm -rf build dist *.egg-info
+        pip install --no-build-isolation . \
+            || echo "WARNING: build failed for ${p} -- see torch API compatibility caveat"
+    done
 
     # Pin numpy to the 1.x line already used by the base image's compiled
     # extensions (SimpleITK, ITK, torch, etc.). Several packages below

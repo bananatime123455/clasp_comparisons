@@ -12,10 +12,10 @@ from Clasp_2D_pipeline import Clasp_2D_model
 sys.path.insert(0, './models/cycleGan')
 from Cycle_GAN_pipeline import MRIGANPipeline
 
-sys.path.insert(0, './models/UNIT&pix2pixHD')          
+sys.path.insert(0, './models/UNIT_pix2pixHD')          
 from UNIT_pipeline import UNITPipeline 
 
-sys.path.insert(0, './models/UNIT&pix2pixHD')
+sys.path.insert(0, './models/UNIT_pix2pixHD')
 from Pix2PixHD_pipeline import Pix2PixHDPipeline
 
 

@@ -1,0 +1,3 @@
+# ninja log v5
+1	19910	1787618078166655078	/home/theperfectbanana/Yu/comparisons/models/UNIT_pix2pixHD/imaginaire/third_party/channelnorm/build/temp.linux-x86_64-cpython-310/src/channelnorm_cuda.o	995091304390139d
+1	30814	1787618089081237057	/home/theperfectbanana/Yu/comparisons/models/UNIT_pix2pixHD/imaginaire/third_party/channelnorm/build/temp.linux-x86_64-cpython-310/src/channelnorm_kernel.o	6d291c1cd34ae414
