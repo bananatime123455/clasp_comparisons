@@ -81,3 +81,4 @@ models/UNIT/logs/2026_0625_1846_48_vid2vid_street/tensorboard/events.out.tfevent
 Results/unit_run/*checkpoint.pt
 comparisons.sif
 *.sif
+*.pt

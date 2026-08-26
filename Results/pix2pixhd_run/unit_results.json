@@ -1,0 +1,9 @@
+{
+  "model": "UNIT",
+  "modality_1": "Axial_T1_post",
+  "modality_2": "Axial_T2",
+  "epochs_trained": 2,
+  "ssim": 0.004406082597116064,
+  "psnr": 7.8983225156279175,
+  "mse": 0.6550252100124079
+}

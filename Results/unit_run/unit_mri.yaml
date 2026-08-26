@@ -2,7 +2,7 @@
 image_display_iter: 10
 image_save_iter: 5
 snapshot_save_iter: 100
-max_iter: 150
+max_iter: 20
 logging_iter: 1
 
 trainer:

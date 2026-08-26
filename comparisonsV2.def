@@ -68,15 +68,36 @@ From: nvcr.io/nvidia/clara/monai-toolkit:3.0
     python -c "import bias_act_cuda; print('bias_act_cuda OK')" || echo "WARNING: bias_act_cuda import failed"
     python -c "import upfirdn2d_cuda; print('upfirdn2d_cuda OK')" || echo "WARNING: upfirdn2d_cuda import failed"
 
+    # --- OpenCV cleanup / pinned reinstall -------------------------------
+    # The base image ships a compiled cv2 package that also contains a
+    # version-specific native module (cv2/python-3.10/cv2.cpython-310-...so)
+    # bundled alongside the version-agnostic cv2.abi3.so. This subfolder is
+    # NOT part of any pip-installed opencv wheel (confirmed by inspecting
+    # opencv-python-headless's own file list) and is NOT tracked by pip, so
+    # `pip uninstall`, `--force-reinstall`, and partial `rm -rf` of only
+    # that subfolder all fail to remove it -- cv2/__init__.py's bootstrap()
+    # preferentially loads it over the fresh wheel's own .so, leaving
+    # cv2.dnn present but missing DictValue (or, if only the subfolder
+    # is deleted without removing the rest of the tree cleanly, causing an
+    # import recursion error instead). The only fix that has been verified
+    # to actually work is a full removal of the entire cv2/ directory
+    # before reinstalling, so nothing from the base image's build survives
+    # into the fresh install.
+    pip uninstall -y opencv opencv-python opencv-python-headless opencv-contrib-python || true
+    rm -rf /usr/local/lib/python3.10/dist-packages/cv2
+    find /usr/local/lib/python3.10/dist-packages -maxdepth 1 -iname "*opencv*" -exec rm -rf {} + || true
+
+    pip install --no-cache-dir --no-deps "opencv-python-headless==4.9.0.80"
+
+    python3 -c "import cv2, os; print('cv2 loaded from:', os.path.dirname(cv2.__file__))"
+    python3 -c "import cv2.dnn; assert hasattr(cv2.dnn, 'DictValue'); print('cv2.dnn OK')"
+
     # Pin numpy to the 1.x line already used by the base image's compiled
-    # extensions (SimpleITK, ITK, torch, etc.), AND pin opencv-python-headless
-    # explicitly here. Without this pin, albumentations/albucore pull in an
-    # unconstrained opencv-python-headless wheel whose Python typing stubs
-    # (cv2/typing/__init__.py referencing cv2.dnn.DictValue) don't match the
-    # base image's compiled cv2 bindings, breaking cv2 entirely
-    # (AttributeError: module 'cv2.dnn' has no attribute 'DictValue').
-    # Installing it explicitly and pinned, rather than letting a downstream
-    # dependency choose the version, keeps this reproducible and known-good.
+    # extensions (SimpleITK, ITK, torch, etc.). opencv-python-headless is
+    # also listed here as a backstop pin in case any downstream package
+    # (e.g. albumentations) tries to touch it again -- the explicit
+    # install above is what actually prevents the conflict; this pin just
+    # ensures nothing silently bumps the version afterward.
     echo "numpy==1.26.4" > /tmp/constraints.txt
     cat >> /tmp/constraints.txt << 'EOF'
 opencv-python-headless==4.9.0.80
@@ -151,6 +172,7 @@ EOF
     python -c "import torch; print('torch:', torch.__version__, '| CUDA available:', torch.cuda.is_available(), '| supported archs:', torch.cuda.get_arch_list())" || echo "WARNING: torch import failed"
     python -c "import SimpleITK; print('SimpleITK OK')" || echo "WARNING: SimpleITK import failed"
     python -c "import cv2; print('opencv OK:', cv2.__version__)" || echo "WARNING: opencv import failed"
+    python -c "import cv2.dnn; assert hasattr(cv2.dnn, 'DictValue'); print('cv2.dnn OK')" || echo "FATAL-CHECK: cv2.dnn missing or broken -- pipeline requires it"
     python -c "import albumentations; print('albumentations OK:', albumentations.__version__)" || echo "WARNING: albumentations import failed"
     python -c "import tensorflow as tf; print('tensorflow:', tf.__version__, '| GPUs visible:', tf.config.list_physical_devices('GPU'))" || echo "NOTE: empty GPU list during build is expected."
     python -c "import onnxruntime; print('onnxruntime OK')" || echo "WARNING: onnxruntime import failed"
@@ -160,7 +182,7 @@ EOF
 
 %labels
     Author "Yu Lab"
-    Version "1.8"
+    Version "1.9"
     Description "MONAI toolkit with full set of dependencies for CLASP project."
 
 %help

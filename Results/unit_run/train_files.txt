@@ -1,2 +1,2 @@
-Data/BRATS/BraTS2021_00583/BraTS2021_00583.h5
-Data/BRATS/BraTS2021_00582/BraTS2021_00582.h5
+/home/theperfectbanana/Yu/comparisons/Data/BRATS/BraTS2021_00583/BraTS2021_00583.h5
+/home/theperfectbanana/Yu/comparisons/Data/BRATS/BraTS2021_00582/BraTS2021_00582.h5
