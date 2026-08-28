@@ -2,7 +2,7 @@
 image_display_iter: 10
 image_save_iter: 5
 snapshot_save_iter: 100
-max_iter: 100
+max_iter: 20
 logging_iter: 1
 
 trainer:
@@ -92,6 +92,13 @@ data:
             random_scale_limit: 0.1
             horizontal_flip: True
             random_crop_h_w: 256, 256
+    test:
+        roots:
+            - '/home/theperfectbanana/Yu/comparisons/Results/unit_run'
+        batch_size: 1
+        augmentations:
+            resize_smallest_side: 256
+            center_crop_h_w: 256, 256
     val:
         roots:
             - '/home/theperfectbanana/Yu/comparisons/Results/unit_run'

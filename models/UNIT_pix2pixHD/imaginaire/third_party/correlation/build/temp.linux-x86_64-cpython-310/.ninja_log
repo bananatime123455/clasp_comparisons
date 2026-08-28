@@ -1,0 +1,3 @@
+# ninja log v5
+0	20242	1787618043553157330	/home/theperfectbanana/Yu/comparisons/models/UNIT_pix2pixHD/imaginaire/third_party/correlation/build/temp.linux-x86_64-cpython-310/src/correlation_cuda.o	b7ebafca43f55bc1
+1	31159	1787618054467849133	/home/theperfectbanana/Yu/comparisons/models/UNIT_pix2pixHD/imaginaire/third_party/correlation/build/temp.linux-x86_64-cpython-310/src/correlation_cuda_kernel.o	28b71abfcab44594

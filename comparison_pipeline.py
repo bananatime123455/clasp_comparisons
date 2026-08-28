@@ -12,8 +12,12 @@ from Clasp_2D_pipeline import Clasp_2D_model
 sys.path.insert(0, './models/cycleGan')
 from Cycle_GAN_pipeline import MRIGANPipeline
 
-sys.path.insert(0, './models/UNIT')          
-from UNIT_pipeline import UNITPipeline            
+sys.path.insert(0, './models/UNIT_pix2pixHD')          
+from UNIT_pipeline import UNITPipeline 
+
+sys.path.insert(0, './models/UNIT_pix2pixHD')
+from Pix2PixHD_pipeline import Pix2PixHDPipeline
+
 
 from plot_comparison import plot_comparison_table
 
@@ -62,6 +66,7 @@ class comp_pipeline:
                 epochs=self.epochs,
                 early_stopping_patience=self.es_patience,
                 early_stopping_delta=self.es_delta,
+                data_dir_results = "./Results/cycle_GAN_run"
             )
             results = cyclegan.train()
             if results:
@@ -84,7 +89,21 @@ class comp_pipeline:
             )                                               
             results = unit.train()                          
             if results:                                     
-                all_results.append(results)                 
+                all_results.append(results)  
+
+        if 'pix2pixHD' in self.models_comparing:
+            print("Running pix2pixHD comparison...")
+            p2p = Pix2PixHDPipeline(
+                train_files=train, test_files=test, val_files=val,
+                modality_1=self.modality_1, modality_2=self.modality_2,
+                batch_size=self.batch_size, buffer_size=self.buffer_size,
+                epochs=self.epochs, early_stopping_patience=self.es_patience,
+                early_stopping_delta=self.es_delta,
+                logdir=self.data_dir_results / "pix2pixhd_run",
+            )
+            results = p2p.train()
+            if results:
+                all_results.append(results)
 
         self._save_results(all_results)
         plot_comparison_table(

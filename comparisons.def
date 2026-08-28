@@ -1,0 +1,181 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/clara/monai-toolkit:3.0
+
+%files
+    "models/UNIT_pix2pixHD" /opt/imaginaire_src
+
+%post
+    # The %post section is executed inside the container after the base OS has been set up.
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "Installing system-level dependencies..."
+    apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        git \
+        wget \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+    echo "Installing additional Python packages..."
+    pip install --upgrade pip
+
+    # The base image (nvcr.io/nvidia/clara/monai-toolkit:3.0) ships an
+    # NGC-patched torch build (2.5.0a0+...nv24.08.02) that only supports
+    # up to sm_90 (Hopper). Blackwell-generation GPUs (RTX 50-series,
+    # e.g. RTX 5070 = sm_120) are NOT supported by that build and will
+    # warn/fail with "is not compatible with the current PyTorch
+    # installation." Replace it with a torch build that includes sm_120
+    # kernels — matches the version pinned in the comparisons conda env,
+    # and its exact CUDA/cuDNN wheel versions were already pinned in the
+    # constraints file above, so downstream installs (nnunetv2, tensorflow,
+    # etc.) resolve consistently against this torch rather than the old one.
+    pip uninstall -y torch torchvision torchaudio || true
+    pip install --no-cache-dir \
+        torch==2.10.0+cu128 \
+        torchvision==0.25.0+cu128 \
+        torchaudio==2.10.0+cu128 \
+        --index-url https://download.pytorch.org/whl/cu128
+
+    echo "Building imaginaire's custom CUDA extensions from local source..."
+    for p in correlation channelnorm resample2d bias_act upfirdn2d; do
+        echo "Building ${p}..."
+        cd "/opt/imaginaire_src/imaginaire/third_party/${p}"
+        rm -rf build dist *.egg-info
+        pip install --no-build-isolation . \
+            || echo "WARNING: build failed for ${p} -- see torch API compatibility caveat"
+    done
+
+    # Pin numpy to the 1.x line already used by the base image's compiled
+    # extensions (SimpleITK, ITK, torch, etc.). Several packages below
+    # (opencv-python-headless, antspyx, nnunetv2's dependency chain) will
+    # try to pull in numpy 2.x if left unconstrained, which breaks any
+    # module still compiled against the numpy 1.x ABI. Every pip install
+    # below is run with this constraints file so numpy can never be
+    # silently bumped to 2.x mid-build.
+    echo "numpy==1.26.4" > /tmp/constraints.txt
+    cat >> /tmp/constraints.txt << 'EOF'
+nvidia-cublas-cu12==12.8.4.1
+nvidia-cuda-cupti-cu12==12.8.90
+nvidia-cuda-nvrtc-cu12==12.8.93
+nvidia-cuda-runtime-cu12==12.8.90
+nvidia-cudnn-cu12==9.10.2.21
+nvidia-cufft-cu12==11.3.3.83
+nvidia-cufile-cu12==1.13.1.3
+nvidia-curand-cu12==10.3.9.90
+nvidia-cusolver-cu12==11.7.3.90
+nvidia-cusparse-cu12==12.5.8.93
+nvidia-cusparselt-cu12==0.7.1
+nvidia-nccl-cu12==2.27.5
+nvidia-nvjitlink-cu12==12.8.93
+nvidia-nvtx-cu12==12.8.90
+EOF
+    # These pins match the CUDA/cuDNN wheel versions torch==2.10.0+cu128
+    # already needs (per the comparisons conda env). Forcing tensorflow's
+    # GPU install to reuse the exact same wheels avoids pip silently
+    # swapping in a different nvidia-cu12 version for one framework and
+    # breaking the other. TF 2.19 requires CUDA 12.3+/cuDNN 9.3+, so
+    # cuDNN 9.10.2.21 satisfies it.
+
+    # Core training / experimentation stack
+    pip install --no-cache-dir -c /tmp/constraints.txt \
+        scikit-learn \
+        lightning \
+        h5py \
+        imageio \
+        torchview \
+        torchviz \
+        "ray[tune]" \
+        hydra-core \
+        hydra-optuna-sweeper \
+        hydra-ray-launcher \
+        omegaconf \
+        tensorboard \
+        mlflow \
+        termcolor \
+        click \
+        torchmetrics[image] \
+        wandb
+
+    # TensorFlow, GPU build (the standard pip "tensorflow" wheel is
+    # GPU-enabled on Linux — no separate tensorflow-gpu package needed
+    # since TF 2.1). Required directly by models/metrics.py. Installed
+    # under the constraints file above so it reuses torch's existing
+    # nvidia-cu12 CUDA/cuDNN wheels instead of pulling in conflicting ones.
+    pip install --no-cache-dir -c /tmp/constraints.txt \
+        "tensorflow==2.19.1"
+
+    # Medical imaging / segmentation stack (from comparisons environment)
+    # Installed without version pins (beyond the numpy constraint above),
+    # so pip will otherwise resolve freely against the base image's
+    # torch/cuda stack; verify with the checks at the end of this section.
+    pip install --no-cache-dir -c /tmp/constraints.txt \
+        nnunetv2 \
+        SimpleITK \
+        antspyx \
+        nibabel \
+        dicom2nifti \
+        pydicom \
+        python-gdcm \
+        hd-bet \
+        dynamic-network-architectures \
+        batchgenerators \
+        batchgeneratorsv2 \
+        acvl-utils \
+        connected-components-3d
+
+    # Additional utilities used across the project
+    # NOTE: opencv is intentionally NOT installed via pip here — the
+    # nvcr.io/nvidia/clara/monai-toolkit base image already ships its own
+    # compiled OpenCV (likely CUDA-enabled). Installing opencv-python-headless
+    # on top of it mismatches the compiled bindings against the pip
+    # package's typing stubs and breaks cv2 (e.g. "cv2.dnn has no attribute
+    # DictValue"). If cv2 is somehow missing at runtime, install it manually
+    # and test rather than adding it back here unconditionally.
+    pip install --no-cache-dir -c /tmp/constraints.txt \
+        einops \
+        graphviz \
+        tifffile \
+        imagecodecs \
+        skops \
+        timm \
+        safetensors \
+        huggingface-hub
+
+    # Belt-and-suspenders: force numpy back onto the exact version in case
+    # any package above ignored the constraints file (some build backends
+    # do). Pinned to match the known-good version from the conda env this
+    # project was validated against.
+    pip install --no-cache-dir "numpy==1.26.4"
+
+    echo "Verifying key package versions..."
+    python -c "import numpy; print('numpy:', numpy.__version__)" || echo "WARNING: numpy import failed"
+    python -c "import torch; print('torch:', torch.__version__, '| CUDA available:', torch.cuda.is_available(), '| supported archs:', torch.cuda.get_arch_list())" || echo "WARNING: torch import failed"
+    python -c "import SimpleITK; print('SimpleITK OK')" || echo "WARNING: SimpleITK import failed"
+    python -c "import cv2; print('opencv OK:', cv2.__version__)" || echo "WARNING: opencv import failed (using base image's build — see note above)"
+    python -c "import tensorflow as tf; print('tensorflow:', tf.__version__, '| GPUs visible:', tf.config.list_physical_devices('GPU'))" || echo "NOTE: TF GPU check ran without error above still verify at runtime — build environments often have no GPU device, so an empty list here during build is expected and not itself a failure."
+    python -c "import onnxruntime; print('onnxruntime OK')" || echo "WARNING: onnxruntime import failed — check numpy ABI compatibility above"
+    echo "Verification checks complete (warnings above are non-fatal; review before using the built image)."
+
+    echo "Installation complete."
+
+%environment
+    export PYTHONUNBUFFERED=1
+
+%labels
+    Author "Yu Lab"
+    Version "1.6"
+    Description "MONAI toolkit with full set of dependencies for CLASP project."
+
+%help
+This is a custom Apptainer container based on the NVIDIA MONAI Toolkit.
+It includes a comprehensive set of packages for training and experimentation,
+including lightning, ray[tune], hydra, tensorboard, mlflow, nnU-Net v2,
+SimpleITK/antspyx, and related medical imaging utilities.
+
+To build this container, run:
+  sudo apptainer build --force clasp-custom.sif clasp-custom.def

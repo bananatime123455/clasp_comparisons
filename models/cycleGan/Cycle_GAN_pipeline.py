@@ -1,6 +1,9 @@
 import pathlib
 import numpy as np
 import tensorflow as tf
+import torch
+from torchmetrics.image import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
+from torchmetrics import MeanSquaredError
 
 from tqdm import tqdm
 from data_processing import load_datasets
@@ -9,17 +12,10 @@ from loss import generator_loss, discriminator_loss, calc_cycle_loss, identity_l
 from training import train_step
 from plotting import generate_images, plot_losses, plot_metrics
 from early_stopping import EarlyStopping
-
-try:
-    from skimage.metrics import structural_similarity as _ssim_fn
-    from skimage.metrics import peak_signal_noise_ratio as _psnr_fn
-    _SKIMAGE_OK = True
-except ImportError:
-    _SKIMAGE_OK = False
+from models.metrics import compute_metrics
 
 IMG_HEIGHT = 256
 IMG_WIDTH  = 256
-
 
 class MRIGANPipeline:
     def __init__(
@@ -29,12 +25,12 @@ class MRIGANPipeline:
         val_files,
         modality_1,
         modality_2,
-        batch_size       = 32,
-        buffer_size      = 1000,
-        epochs           = 100,
-        early_stopping_patience = 5,
-        early_stopping_delta    = 0.01,
-        data_dir_results = "results"
+        batch_size,
+        buffer_size,
+        epochs,
+        early_stopping_patience,
+        early_stopping_delta,
+        data_dir_results
     ):
         self.modality_1       = modality_1
         self.modality_2       = modality_2
@@ -57,6 +53,9 @@ class MRIGANPipeline:
         self.discriminator_y_optimizer  = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 
         # ── Datasets ────────────────────────────────────────────────────────
+        # load_datasets (data_processing.py) reads the given H5 files and
+        # yields (H, W, 3) float32 batches in [-1, 1], matching the
+        # generator's tanh output range and the model's fixed RGB input shape.
         (
             self.tr1_train, self.tr2_train,
             self.tr1_test,  self.tr2_test,
@@ -74,6 +73,8 @@ class MRIGANPipeline:
             delta=early_stopping_delta,
         )
 
+
+
     # ── Internal helpers ────────────────────────────────────────────────────
 
     def _models_dict(self):
@@ -88,10 +89,7 @@ class MRIGANPipeline:
         """Run one full pass over the training set and return mean losses."""
         g_g, g_f, d_x, d_y = [], [], [], []
 
-        dataset = tf.data.Dataset.zip((self.tr1_train, self.tr2_train))
-        total = sum(1 for _ in dataset)  # get step count for the progress bar
-
-        pbar = tqdm(zip(self.tr1_train, self.tr2_train), total=total, desc="  Training", unit="step")
+        pbar = tqdm(zip(self.tr1_train, self.tr2_train), desc="  Training", unit="step")
 
         for image_x, image_y in pbar:
             gg, gf, dx, dy = train_step(
@@ -115,10 +113,10 @@ class MRIGANPipeline:
 
         return np.mean(g_g), np.mean(g_f), np.mean(d_x), np.mean(d_y)
 
-    def _val_loss(self):
-        """Compute mean generator loss over the validation set."""
+    def _test_loss(self):
+        """Compute mean generator loss over the test set."""
         losses = []
-        for image_x, image_y in tf.data.Dataset.zip((self.tr1_val, self.tr2_val)):
+        for image_x, image_y in tf.data.Dataset.zip((self.tr1_test, self.tr2_test)):
             fake_y      = self.generator_g(image_x, training=False)
             fake_x      = self.generator_f(image_y, training=False)
             disc_fake_y = self.discriminator_y(fake_y, training=False)
@@ -127,62 +125,20 @@ class MRIGANPipeline:
             losses.append(loss)
         return float(np.mean(losses)) if losses else 0.0
 
-    def _compute_metrics(self, dataset_x, dataset_y):
-        """
-        Compute SSIM, PSNR, and MSE of generator_g predictions against
-        real modality_2 images on the provided dataset pair.
-        """
-        ssim_vals, psnr_vals, mse_vals = [], [], []
 
-        for real_x, real_y in tf.data.Dataset.zip((dataset_x, dataset_y)):
-            fake_y = self.generator_g(real_x, training=False).numpy()
-            real_y_np = real_y.numpy()
-
-            for i in range(real_x.shape[0]):
-                pred  = fake_y[i, :, :, 0]
-                truth = real_y_np[i, :, :, 0]
-
-                mse = float(np.mean((pred - truth) ** 2))
-                mse_vals.append(mse)
-
-                if _SKIMAGE_OK:
-                    ssim_vals.append(float(_ssim_fn(truth, pred, data_range=1.0)))
-                    psnr_vals.append(float(_psnr_fn(truth, pred, data_range=1.0)))
-
-        return (
-            ssim_vals if ssim_vals else [0.0],
-            psnr_vals if psnr_vals else [0.0],
-            mse_vals  if mse_vals  else [0.0],
-        )
 
     # ── Public API ──────────────────────────────────────────────────────────
 
     def train(self):
         """
         Train the CycleGAN for self.epochs epochs with early stopping.
-
-        Returns a results dict compatible with the comp_pipeline caller:
-        {
-            "model":          "cycle_GAN",
-            "modality_1":     str,
-            "modality_2":     str,
-            "epochs_trained": int,
-            "gen_g_loss":     [float, ...],
-            "gen_f_loss":     [float, ...],
-            "disc_x_loss":    [float, ...],
-            "disc_y_loss":    [float, ...],
-            "val_loss":       [float, ...],
-            "ssim":           float,   # mean over test set (last epoch)
-            "psnr":           float,
-            "mse":            float,
-        }
         """
         history = {
             "gen_g_loss":  [],
             "gen_f_loss":  [],
             "disc_x_loss": [],
             "disc_y_loss": [],
-            "val_loss":    [],
+            "test_loss":    [],
         }
 
         epochs_trained = 0
@@ -202,12 +158,12 @@ class MRIGANPipeline:
                 f"Disc X: {dx:.4f} | Disc Y: {dy:.4f}"
             )
 
-            # ── Validation loss + early stopping ────────────────────────────
-            val_loss = self._val_loss()
-            history["val_loss"].append(val_loss)
-            print(f"  Val loss: {val_loss:.4f}")
+            # ── test loss + early stopping ────────────────────────────
+            test_loss = self._test_loss()
+            history["test_loss"].append(test_loss)
+            print(f"  test loss: {test_loss:.4f}")
 
-            self.early_stopping(val_loss, self._models_dict())
+            self.early_stopping(test_loss, self._models_dict())
             epochs_trained = epoch + 1
 
             # ── Visualise sample outputs ─────────────────────────────────────
@@ -224,10 +180,9 @@ class MRIGANPipeline:
         # Restore best weights
         self.early_stopping.load_best_weights(self._models_dict())
 
-        # ── Final metrics on test set ────────────────────────────────────────
-        ssim_vals, psnr_vals, mse_vals = self._compute_metrics(
-            self.tr1_test, self.tr2_test
-        )
+        # ── Final metrics on val set ────────────────────────────────────────
+        metrics = compute_metrics(self.generator_g)
+        ssim_vals, psnr_vals, mse_vals = metrics._compute_metrics_tensorflow(self.tr1_val, self.tr2_val, "cycleGAN")
 
         n = len(history["gen_g_loss"])
         plot_losses(

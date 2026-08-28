@@ -1,0 +1,42 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/clara/monai-toolkit:3.0
+
+%post
+    # The %post section is executed inside the container after the base OS has been set up.
+    # Using the --no-cache-dir option to reduce the size of the final container image.
+    echo "Installing additional Python packages..."
+    pip install --upgrade pip
+    pip install --no-cache-dir \
+        scikit-learn \
+        lightning \
+        h5py \
+        imageio \
+        torchview \
+        torchviz \
+        "ray[tune]" \
+        hydra-core \
+        hydra-optuna-sweeper \
+        hydra-ray-launcher \
+        omegaconf \
+        tensorboard \
+        mlflow \
+        termcolor \
+        click \
+        torchmetrics[image]
+    echo "Installation complete."
+
+%environment
+    export PYTHONUNBUFFERED=1
+
+%labels
+    Author "Mike Fromandi"
+    Version "1.5"
+    Description "MONAI toolkit with full set of dependencies for CLASP project."
+
+%help
+This is a custom Apptainer container based on the NVIDIA MONAI Toolkit.
+It includes a comprehensive set of packages for training and experimentation,
+including lightning, ray[tune], hydra, tensorboard, and mlflow.
+
+To build this container, run:
+  sudo apptainer build --force clasp-custom.sif clasp-custom.def
