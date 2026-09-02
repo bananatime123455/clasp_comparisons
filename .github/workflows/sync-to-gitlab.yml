@@ -16,6 +16,8 @@ jobs:
 
       - name: Mirror to GitLab
         run: |
+          set -x  # print each command before running it
           git remote add gitlab https://bananatime123455:${{ secrets.GITLAB_PAT }}@gitlab.com/smph/isnl/baseline_comaprisons.git
+          git remote -v  # confirm the remote was added correctly
           git push gitlab --all
           git push gitlab --tags
