@@ -1,0 +1,20 @@
+name: Sync to GitLab
+
+on:
+  push:
+    branches:
+      - main  # Or whichever default branch you track
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to GitLab
+        run: |
+          git remote add gitlab https://bananatime123455:${{ secrets.GITLAB_PAT }}@://gitlab.com
+          git push gitlab --all --force
