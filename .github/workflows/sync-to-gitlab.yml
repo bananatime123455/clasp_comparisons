@@ -3,7 +3,7 @@ name: Sync to GitLab
 on:
   push:
     branches:
-      - main  # Or whichever default branch you track
+      - main
 
 jobs:
   sync:
@@ -16,5 +16,6 @@ jobs:
 
       - name: Mirror to GitLab
         run: |
-          git remote add gitlab https://bananatime123455:${{ secrets.GITLAB_PAT }}@://gitlab.com
-          git push gitlab --all --force
+          git remote add gitlab https://bananatime123455:${{ secrets.GITLAB_PAT }}@gitlab.com/smph/isnl/baseline_comaprisons.git
+          git push gitlab --all
+          git push gitlab --tags
