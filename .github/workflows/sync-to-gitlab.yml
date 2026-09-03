@@ -20,4 +20,4 @@ jobs:
           git remote add gitlab https://bananatime123455:${{ secrets.GITLAB_PAT }}@gitlab.com/smph/isnl/baseline_comaprisons.git
           git remote -v  # confirm the remote was added correctly
           git push gitlab --all
-          git push gitlab --tags
+          git push gitlab --tags 
