@@ -2,7 +2,7 @@
 #
 # Drop-in replacement for imaginaire.utils.dataset.get_train_and_val_dataloader
 # Feeds pure numpy arrays from H5 files — no PNG conversion.
-#
+#FOR UNIT AND MUNIT
 # Called by pipeline.py — never needs to be touched directly.
 
 from pathlib import Path
@@ -46,12 +46,14 @@ def get_train_and_test_dataloader(cfg, train_files: list, test_files: list):
         modality_a=modality_a,
         modality_b=modality_b,
         augmentations=train_aug,
+        paired=False,   # UNIT/MUNIT train unpaired by design
     )
     test_dataset = H5MRIDataset(
         h5_files=test_files,
         modality_a=modality_a,
         modality_b=modality_b,
         augmentations=test_aug,
+        # paired defaults to True — val/test loss should reflect true pairs
     )
 
     train_loader = DataLoader(

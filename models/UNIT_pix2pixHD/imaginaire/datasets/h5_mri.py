@@ -61,30 +61,23 @@ def _to_tensor(slc: np.ndarray, normalize_to_neg1_pos1: bool = True) -> torch.Te
 
 class H5MRIDataset(Dataset):
     """
-    Unpaired MRI dataset loaded purely from H5 files as numpy arrays.
+    ...
+    paired : bool
+        If True (default), index_b is sampled at the same position as
+        index_a (idx % len(index_b)) instead of randomly. Since index_a
+        and index_b are built in lockstep from the same (h5_path,
+        slice_idx) pairs during __init__, this recovers true anatomical
+        pairing.
 
-    Builds a flat index of (h5_path, slice_index) at construction time,
-    then loads individual slices on demand in __getitem__ so memory usage
-    stays low even for large cohorts.
+        Defaults to True because:
+          - pix2pixHD requires paired supervision to function at all.
+          - Eval metrics (SSIM/PSNR/MSE) for every model assume images_a
+            and images_b correspond to the same slice.
 
-    Parameters
-    ----------
-    h5_files : list[Path]
-        H5 files for this split (train / val / test).
-    modality_a : str
-        Key suffix for domain A, e.g. 't1ce_transformed'.
-    modality_b : str
-        Key suffix for domain B, e.g. 't2_transformed'.
-    augmentations : dict | None
-        Augmentation config from YAML — handled keys:
-            resize_smallest_side  int
-            random_scale_limit    float
-            random_crop_h_w       tuple[int, int]
-            center_crop_h_w       tuple[int, int]
-            horizontal_flip       bool
-    blank_threshold : float
-        Slices where both modalities have mean < this (on [0,1] scale)
-        are excluded from the index to avoid trivially easy blank inputs.
+        Set paired=False explicitly only for UNIT/MUNIT *training*, where
+        the unpaired-GAN objective (cycle-consistency, content/style
+        disentanglement) is meant to learn a domain mapping without
+        relying on slice-level correspondence.
     """
 
     def __init__(
@@ -94,11 +87,13 @@ class H5MRIDataset(Dataset):
         modality_b: str,
         augmentations: Optional[dict] = None,
         blank_threshold: float = 0.05,
+        paired: bool = True,
     ):
         self.modality_a      = modality_a
         self.modality_b      = modality_b
         self.augmentations   = augmentations or {}
         self.blank_threshold = blank_threshold
+        self.paired          = paired
 
         # Separate indices per domain — truly unpaired
         self.index_a: List[Tuple[Path, int]] = []
@@ -134,18 +129,21 @@ class H5MRIDataset(Dataset):
         return max(len(self.index_a), len(self.index_b))
 
     def __getitem__(self, idx: int) -> dict:
-        path_a, si_a = self.index_a[idx % len(self.index_a)]
-        path_b, si_b = self.index_b[idx % len(self.index_b)]
+            path_a, si_a = self.index_a[idx % len(self.index_a)]
+            if self.paired:
+                path_b, si_b = self.index_b[idx % len(self.index_b)]
+            else:
+                path_b, si_b = random.choice(self.index_b)
 
-        slc_a = self._load_slice(path_a, self.modality_a, si_a)
-        slc_b = self._load_slice(path_b, self.modality_b, si_b)
+            slc_a = self._load_slice(path_a, self.modality_a, si_a)
+            slc_b = self._load_slice(path_b, self.modality_b, si_b)
 
-        ta = _to_tensor(slc_a)
-        tb = _to_tensor(slc_b)
+            ta = _to_tensor(slc_a)
+            tb = _to_tensor(slc_b)
 
-        ta, tb = self._augment(ta, tb)
+            ta, tb = self._augment(ta, tb)
 
-        return {"images_a": ta, "images_b": tb}
+            return {"images_a": ta, "images_b": tb}
 
     # ------------------------------------------------------------------
     # Internal helpers

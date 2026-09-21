@@ -55,6 +55,7 @@ def main():
         modality_a=cfg.data.modality_a,
         modality_b=cfg.data.modality_b,
         augmentations=eval_aug,
+        # paired defaults to True — correct for eval
     )
     eval_loader = DataLoader(eval_dataset, batch_size=1, shuffle=False, num_workers=2)
 
