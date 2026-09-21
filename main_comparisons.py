@@ -50,7 +50,7 @@ def parse_args():
                         help="Valid options: cycle_GAN,Clasp_2D,UNIT,pix2pixHD,MUNIT (Comma-separated list of models to compare with no spaces before or after commas)") 
     #training parameters (shared defaults — used for any model that doesn't
     #have its own override in --model_params)
-    parser.add_argument('--epochs',               type=int, default=2)
+    parser.add_argument('--epochs',               type=int, default=100)
     parser.add_argument('--batch_size',           type=int, default=8)
     parser.add_argument('--buffer_size',          type=int, default=10)
     parser.add_argument('--early_stopping_patience', type=int,   default=3)

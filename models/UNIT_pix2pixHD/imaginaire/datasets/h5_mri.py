@@ -135,8 +135,7 @@ class H5MRIDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         path_a, si_a = self.index_a[idx % len(self.index_a)]
-        # Unpaired: random B slice — domains are never aligned
-        path_b, si_b = random.choice(self.index_b)
+        path_b, si_b = self.index_b[idx % len(self.index_b)]
 
         slc_a = self._load_slice(path_a, self.modality_a, si_a)
         slc_b = self._load_slice(path_b, self.modality_b, si_b)
