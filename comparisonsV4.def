@@ -268,4 +268,7 @@ KNOWN LIMITATION: the CUDA extensions target sm_70/75/80 only — no sm_120
 before rebuilding if running on an RTX 50-series GPU.
 
 To build this container, run:
-  sudo apptainer build --force comparisons.sif comparisons.def
+    sudo apptainer build --force comparisonsV4.sif comparisonsV4.def
+To run this container, run:
+    sudo apptainer run --nv comparisonsV4.sif 
+In order to train in this container, you must have a gpu on your device
