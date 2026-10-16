@@ -19,3 +19,5 @@ Test: 0.1 paired data
 Early stopping utilizes L1 loss, comparing generated images to ground truth
 
 Currently, only translation from T1.post to T2 has been implemented
+
+The baselines will then be containerized using apptainer and run in a compute cluster called DGX from UW Madison
